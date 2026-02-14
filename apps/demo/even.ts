@@ -20,9 +20,9 @@ export type EvenInitOptions = {
 
 const DEFAULT_OPTIONS: Required<EvenInitOptions> = {
   pageId: 'hub-simulator-demo',
-  title: 'Even Hub Simulator Demo',
+  title: 'Even Hub Demo',
   subtitle: 'Running without a real device',
-  inputPrompt: 'Use Hub buttons to send events',
+  inputPrompt: 'Select...',
   actionLabel: 'Action sent',
 }
 
@@ -68,33 +68,33 @@ function getBridgeClient(options?: EvenInitOptions): EvenClient {
   const sdk = new EvenBetterSdk()
   const page = sdk.createPage(resolvedOptions.pageId)
 
-  const title = page.addTextElement(resolvedOptions.title)
+  const title = page.addTextElement(`${resolvedOptions.title} - ${resolvedOptions.subtitle}`)
   title
     .setPosition((position) => position.setX(8).setY(16))
-    .setSize((size) => size.setWidth(280).setHeight(44))
-
-  const subtitle = page.addTextElement(resolvedOptions.subtitle)
-  subtitle
-    .setPosition((position) => position.setX(8).setY(64))
-    .setSize((size) => size.setWidth(280).setHeight(44))
+    .setSize((size) => size.setWidth(572).setHeight(44))
 
   const lastInput = page.addTextElement('Last input: waiting...')
   lastInput
-    .setPosition((position) => position.setX(8).setY(112))
-    .setSize((size) => size.setWidth(280).setHeight(44))
+    .setPosition((position) => position.setX(8).setY(64))
+    .setSize((size) => size.setWidth(572).setHeight(44))
 
-  const inputTarget = page.addListElement([
+  const inputItems = [
     resolvedOptions.inputPrompt,
-    'Up',
-    'Down',
-    'Click',
-    'DoubleClick',
-  ])
+    'Even', 'Hub', 'Simulator', 'Demo',
+  ]
+
+  const inputTarget = page.addListElement(inputItems)
   inputTarget
-    .setPosition((position) => position.setX(8).setY(164))
-    .setSize((size) => size.setWidth(280).setHeight(44))
+    .setPosition((position) => position.setX(4).setY(116))
+    .setSize((size) => size.setWidth(572).setHeight(44))
     .markAsEventCaptureElement()
+  inputTarget.setItemWidth(566)
   inputTarget.setIsItemSelectBorderEn(true)
+
+  const selectedItemText = page.addTextElement('-')
+  selectedItemText
+    .setPosition((position) => position.setX(8).setY(168))
+    .setSize((size) => size.setWidth(572).setHeight(44))
 
   const getRawEventType = (event: EvenHubEvent): unknown => {
     const raw = (event.jsonData ?? {}) as Record<string, unknown>
@@ -103,6 +103,7 @@ function getBridgeClient(options?: EvenInitOptions): EvenClient {
       event.listEvent?.eventType ??
       event.textEvent?.eventType ??
       event.sysEvent?.eventType ??
+      (event as Record<string, unknown>).eventType ??
       raw.eventType ??
       raw.event_type ??
       raw.Event_Type ??
@@ -144,29 +145,87 @@ function getBridgeClient(options?: EvenInitOptions): EvenClient {
       case OsEventTypeList.SCROLL_BOTTOM_EVENT:
         return 'Down'
       case OsEventTypeList.CLICK_EVENT:
-        return 'Click'
+        return 'Click (select)'
       case OsEventTypeList.DOUBLE_CLICK_EVENT:
-        return 'DoubleClick'
+        return 'DoubleClick (clean)'
       default:
         return 'Unknown'
     }
   }
 
+  let lastListIndex: number | undefined
+
   const handleInputEvent = async (event: EvenHubEvent): Promise<void> => {
     const rawEventType = getRawEventType(event)
-    const eventType = normalizeEventType(rawEventType)
+    const normalizedEventType = normalizeEventType(rawEventType)
+    const te = event.textEvent ?? event.sysEvent
+    const selectedItemIndex = event.listEvent?.currentSelectItemIndex
+    const selectedItemNameFromEvent = event.listEvent?.currentSelectItemName
+    const prevListIndex = lastListIndex
+    const selectedItemIndexResolved =
+      typeof selectedItemIndex === 'number'
+        ? selectedItemIndex
+        : typeof selectedItemNameFromEvent === 'string'
+          ? inputItems.indexOf(selectedItemNameFromEvent)
+          : -1
+    const selectedItemName = selectedItemNameFromEvent ??
+      (typeof selectedItemIndex === 'number'
+        ? inputItems[selectedItemIndex]
+        : typeof lastListIndex === 'number'
+          ? inputItems[lastListIndex]
+          : undefined)
+
+    let eventType: OsEventTypeList | undefined = normalizedEventType
+
+    if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      // Keep explicit double-click classification.
+    } else if (event.listEvent) {
+      const hasResolvedIndex = selectedItemIndexResolved >= 0
+      const prevIndex = typeof prevListIndex === 'number' ? prevListIndex : selectedItemIndexResolved
+
+      if (hasResolvedIndex && typeof prevIndex === 'number' && selectedItemIndexResolved > prevIndex) {
+        eventType = OsEventTypeList.SCROLL_BOTTOM_EVENT
+      } else if (hasResolvedIndex && typeof prevIndex === 'number' && selectedItemIndexResolved < prevIndex) {
+        eventType = OsEventTypeList.SCROLL_TOP_EVENT
+      } else {
+        // List event with unchanged selection should always be treated as click.
+        eventType = OsEventTypeList.CLICK_EVENT
+      }
+    } else if (event.listEvent || te) {
+      // CLICK_EVENT=0 is sometimes normalized to undefined by bridge parsing.
+      eventType = OsEventTypeList.CLICK_EVENT
+    }
+
+    if (selectedItemIndexResolved >= 0) {
+      lastListIndex = selectedItemIndexResolved
+    }
+
     const label = eventLabel(eventType)
 
     console.log('[even] input event', {
       label,
       rawEventType,
+      selectedItemName,
       event,
     })
 
-    const suffix = label === 'Unknown' ? ` (${String(rawEventType ?? 'n/a')})` : ''
-    appendEventLog(`Demo input: ${label}${suffix}`)
-    lastInput.setContent(`Last input: ${label}${suffix}`)
-    await page.render()
+    const selectedSuffix = selectedItemName ? ` (${selectedItemName})` : ''
+    const unknownSuffix = label === 'Unknown' ? ` (${String(rawEventType ?? 'n/a')})` : ''
+    appendEventLog(`Demo input: ${label}${selectedSuffix || unknownSuffix}`)
+
+    lastInput.setContent(`Last input: ${label}${unknownSuffix}`)
+    const isDoubleClick = eventType === OsEventTypeList.DOUBLE_CLICK_EVENT
+    if (isDoubleClick) {
+      selectedItemText.setContent('-')
+    } else {
+      selectedItemText.setContent(`${selectedItemName ?? '-'}`)
+    }
+
+    const inputUpdated = await lastInput.updateWithEvenHubSdk()
+    const selectedUpdated = await selectedItemText.updateWithEvenHubSdk()
+    if (!inputUpdated || !selectedUpdated) {
+      await page.render()
+    }
   }
 
   // Use SDK event listener for both simulator and device bridge events.
@@ -180,8 +239,7 @@ function getBridgeClient(options?: EvenInitOptions): EvenClient {
       await page.render()
     },
     async sendDemoAction() {
-      subtitle.setContent(`${resolvedOptions.actionLabel}: ${new Date().toLocaleTimeString()}`)
-      await page.render()
+      appendEventLog(`Demo: ${resolvedOptions.actionLabel}`)
     },
   }
 }
