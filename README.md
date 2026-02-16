@@ -23,7 +23,7 @@ The goal of this repository is to provide a simple starting point for building E
 |              AppName          |                      Short Description                          |     Visual        |
 |:-----------------------------:|:----------------------------------------------------------------| :---------------: |
 |    [clock](./apps/clock/)     | Clock App - app refresh test showcase                           | ![clock](./media/clock.png) |
-|    [chess](https://github.com/dmyster145/EvenChess) | Chess HUD app @dmyster145/EvenChess (git submodule) | ![chess](./apps/chess/assets/screenshot.png) |
+|    [chess](https://github.com/dmyster145/EvenChess) | Chess HUD app @dmyster145/EvenChess (git submodule) | ![chess](./media/chess.png) |
 |    [demo](./apps/demo/)       | Demo app (base) - simple control showcase                       | ![demo](./media/demo.png) |
 |    [epub](https://github.com/chortya/epub-reader-g2)       | Epub reader demo @chortya/epub-reader-g2 (git submodule)        | ![epub](./media/epub.png) ![epub2](./media/epub2.png) | 
 |    [reddit](https://github.com/fuutott/rdt-even-g2-rddit-client)   | Reddit feed and comments browser @fuutott/rdt-even-g2-rddit-client (git submodule) | ![reddit](./media/reddit.png) |
