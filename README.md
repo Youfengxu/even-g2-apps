@@ -42,6 +42,8 @@ npm install
 
 The launcher lists all available apps (built-in + external) and prompts you to pick one.
 
+`misc/editor` is an auxiliary helper project tracked as a git submodule under `misc/`. It is not a runtime app in the `apps/*` selection list. Update misc submodule: `git submodule update --init --recursive`
+
 ### Select an app directly
 
 ```bash
@@ -214,13 +216,19 @@ If your app needs custom server-side behaviour (API proxying, asset serving, etc
 
 ## Quicktest + editor workflow
 
-Use this flow when you build UI in `misc/editor` and want to test it quickly in the simulator.
+Use this flow when you build UI in `misc/editor` and want to test it quickly in the simulator with `apps/quicktest`.
 
-1. Start the editor: `./misc/editor.sh`
-2. Generate the TypeScript output in the editor.
-3. Replace `apps/quicktest/generated-ui.ts` with the generated code.
-4. Run quicktest: `APP_NAME=quicktest ./start-even.sh`
-5. Click **Render Quicktest UI** in the browser.
+1. Ensure submodules are initialized once: `git submodule update --init --recursive`
+2. Start the editor helper app: `./misc/editor.sh`
+3. In the editor UI, generate TypeScript source.
+4. Either paste that source into the quicktest textarea, or replace `apps/quicktest/generated-ui.ts`.
+5. Start quicktest: `APP_NAME=quicktest ./start-even.sh`
+6. In quicktest, click **Render Quicktest UI**.
+
+Quicktest expectations for generated source:
+- Source should define `const container = new CreateStartUpPageContainer(...)`.
+- Source can include `import ... from '@evenrealities/even_hub_sdk'` and `export default container`; quicktest strips those automatically.
+- First render creates startup UI; additional renders rebuild the page container.
 
 ---
 
