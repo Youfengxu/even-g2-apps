@@ -42,7 +42,7 @@ npm install
 
 The launcher lists all available apps (built-in + external) and prompts you to pick one.
 
-`misc/editor` is an auxiliary helper project tracked as a git submodule under `misc/`. It is not a runtime app in the `apps/*` selection list. Update misc submodule: `git submodule update --init --recursive`
+`misc/editor` is an auxiliary helper project tracked as a git submodule under `misc/`. It is not a runtime app in the `apps/*` selection list.
 
 ### Select an app directly
 
