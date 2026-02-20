@@ -2,6 +2,35 @@
 
 Multi-application development environment for building and testing Even G2 apps with the Even Hub Simulator.
 
+```bash
+➜  even-dev git:(main) ✗ ./start-even.sh 
+Starting Even Hub development environment... http://127.0.0.1:5173
+Command hints:
+  ./start-even.sh                  # interactive app selection
+  ./start-even.sh <app-name>       # run one app directly
+  ./start-even.sh --update         # refresh all git apps from apps.json
+  ./start-even.sh --update <name>  # refresh one git app from apps.json
+Starting Vite dev server...
+Available apps:
+  ID   NAME                 SOURCE
+  ---- -------------------- ----------------------------------------
+  1    chess                .apps-cache: https://github.com/dmyster145/EvenChess
+  2    clock                apps/clock
+  3    demo                 apps/demo
+  4    epub                 .apps-cache: https://github.com/chortya/epub-reader-g2
+  5    pong                 .apps-cache: https://github.com/nickustinov/pong-even-g2
+  6    quicktest            apps/quicktest
+  7    reddit               .apps-cache: https://github.com/fuutott/rdt-even-g2-rddit-client
+  8    restapi              apps/restapi
+  9    snake                .apps-cache: https://github.com/nickustinov/snake-even-g2
+  10   stars                .apps-cache: https://github.com/thibautrey/even-stars
+  11   stt                  .apps-cache: https://github.com/nickustinov/stt-even-g2
+  12   timer                apps/timer
+  13   transit              .apps-cache: https://github.com/langerhans/even-transit
+  14   weather              .apps-cache: https://github.com/nickustinov/weather-even-g2.git
+Select app [1-14] (default 1): 3
+```
+
 ![demo](./media/demo.png)
 
 For general G2 development documentation, see the [G2 development notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md).
@@ -44,6 +73,22 @@ npm install
 The launcher lists all available apps (built-in + external) and prompts you to pick one.
 
 `misc/editor` is an auxiliary helper project tracked as a git submodule under `misc/`. It is not a runtime app in the `apps/*` selection list.
+
+### Refresh external app cache
+
+Use `--update` to refresh git-based apps from `apps.json`:
+
+```bash
+./start-even.sh --update
+```
+
+Update one registry app only:
+
+```bash
+./start-even.sh --update weather
+```
+
+If a cached app has local changes (for example `package-lock.json` edits), the updater auto-stashes those changes before pull and prints the stash name.
 
 ### Select an app directly
 
@@ -112,6 +157,8 @@ External apps are registered in `apps.json`:
 Values can be:
 - **Git URLs** – cloned into `.apps-cache/` on first run
 - **Local paths** – resolved relative to the even-dev root
+
+Use `./start-even.sh --update` (or `./start-even.sh --update <app>`) to refresh cloned git entries in `.apps-cache/`.
 
 For one-off testing without editing `apps.json`, use `APP_PATH` instead (see above).
 

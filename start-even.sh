@@ -14,7 +14,42 @@ APP_NAME="${APP_NAME:-}"
 APP_PATH="${APP_PATH:-}"
 AUDIO_DEVICE="${AUDIO_DEVICE:-}"
 SIM_OPTS="${SIM_OPTS:-}"
-CLI_APP_NAME="${1:-}"
+CLI_APP_NAME=""
+UPDATE_MODE=0
+UPDATE_TARGET=""
+ORIGINAL_ARGC="$#"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --update)
+      UPDATE_MODE=1
+      if [ "$#" -gt 1 ] && [[ "${2}" != --* ]]; then
+        UPDATE_TARGET="${2}"
+        shift
+      fi
+      ;;
+    --*)
+      echo "Unknown option: $1" >&2
+      echo "Usage: ./start-even.sh [app-name] [--update [app-name]]" >&2
+      exit 1
+      ;;
+    *)
+      if [ -z "${CLI_APP_NAME}" ]; then
+        CLI_APP_NAME="$1"
+      else
+        echo "Unexpected extra argument: $1" >&2
+        echo "Usage: ./start-even.sh [app-name] [--update [app-name]]" >&2
+        exit 1
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [ "${UPDATE_MODE}" -eq 1 ] && [ -n "${CLI_APP_NAME}" ] && [ -z "${UPDATE_TARGET}" ]; then
+  echo "When using --update with an app name, pass it as: --update <app-name>" >&2
+  exit 1
+fi
 
 echo "Starting Even Hub development environment... ${URL}"
 
@@ -26,22 +61,118 @@ command_exists () {
   command -v "$1" >/dev/null 2>&1
 }
 
+print_cli_hints () {
+  cat <<'EOF'
+Command hints:
+  ./start-even.sh                  # interactive app selection
+  ./start-even.sh <app-name>       # run one app directly
+  ./start-even.sh --update         # refresh all git apps from apps.json
+  ./start-even.sh --update <name>  # refresh one git app from apps.json
+EOF
+}
+
+get_registry_entry () {
+  local app_name="$1"
+  APP_LOOKUP_NAME="${app_name}" node -e "
+    const fs = require('fs');
+    const name = process.env.APP_LOOKUP_NAME;
+    if (!fs.existsSync('apps.json')) process.exit(0);
+    const map = JSON.parse(fs.readFileSync('apps.json', 'utf8'));
+    const value = map[name];
+    if (typeof value === 'string' && value.length > 0) {
+      console.log(value);
+    }
+  " 2>/dev/null
+}
+
+is_git_url () {
+  local value="$1"
+  [[ "${value}" == https://* || "${value}" == git@* ]]
+}
+
+update_cached_app () {
+  local app_name="$1"
+  local raw_entry
+  local base_url
+  local cache_dir
+  local stash_name
+  local stashed=0
+
+  raw_entry="$(get_registry_entry "${app_name}")"
+  if [ -z "${raw_entry}" ]; then
+    echo "Registry app '${app_name}' was not found in apps.json." >&2
+    return 1
+  fi
+
+  base_url="${raw_entry%%#*}"
+  if ! is_git_url "${base_url}"; then
+    echo "Skipping '${app_name}': registry entry is a local path (${raw_entry})"
+    return 0
+  fi
+
+  cache_dir=".apps-cache/${app_name}"
+  if [ ! -d "${cache_dir}/.git" ]; then
+    mkdir -p ".apps-cache"
+    echo "Cloning ${app_name} from ${base_url}..."
+    git clone "${base_url}" "${cache_dir}"
+    return 0
+  fi
+
+  echo "Updating ${app_name} in ${cache_dir}..."
+  git -C "${cache_dir}" fetch --all --prune
+
+  if ! git -C "${cache_dir}" diff --quiet || ! git -C "${cache_dir}" diff --cached --quiet || [ -n "$(git -C "${cache_dir}" ls-files --others --exclude-standard)" ]; then
+    stash_name="even-dev-auto-stash-${app_name}-$(date +%Y%m%d-%H%M%S)"
+    echo "Local changes detected in ${cache_dir}; stashing as '${stash_name}'..."
+    git -C "${cache_dir}" stash push --include-untracked -m "${stash_name}" >/dev/null
+    stashed=1
+  fi
+
+  git -C "${cache_dir}" pull --ff-only
+
+  if [ "${stashed}" -eq 1 ]; then
+    echo "Update completed for ${app_name}. Local changes are saved in git stash (${stash_name})."
+  fi
+}
+
+refresh_apps_cache () {
+  local updated=0
+  local app_name
+
+  if [ ! -f "apps.json" ]; then
+    echo "apps.json was not found." >&2
+    return 1
+  fi
+
+  if ! command_exists git; then
+    echo "git is not installed." >&2
+    return 1
+  fi
+
+  if [ -n "${UPDATE_TARGET}" ]; then
+    update_cached_app "${UPDATE_TARGET}"
+    return $?
+  fi
+
+  while IFS= read -r app_name; do
+    [ -z "${app_name}" ] && continue
+    update_cached_app "${app_name}"
+    updated=$((updated + 1))
+  done < <(node -e "Object.keys(JSON.parse(require('fs').readFileSync('apps.json','utf8'))).forEach(k=>console.log(k))")
+
+  if [ "${updated}" -eq 0 ]; then
+    echo "No registry apps found in apps.json."
+  else
+    echo "Updated ${updated} registry app(s)."
+  fi
+}
+
 resolve_app_location () {
   local app_name="$1"
 
   if [ -f "apps.json" ]; then
     local configured_location
-    configured_location="$(
-      APP_LOOKUP_NAME="${app_name}" node -e "
-        const fs = require('fs');
-        const name = process.env.APP_LOOKUP_NAME;
-        const map = JSON.parse(fs.readFileSync('apps.json', 'utf8'));
-        const value = map[name];
-        if (typeof value === 'string' && value.length > 0) {
-          console.log(value);
-        }
-      " 2>/dev/null
-    )"
+    configured_location="$(get_registry_entry "${app_name}")"
     if [ -n "${configured_location}" ]; then
       echo ".apps-cache: ${configured_location}"
       return
@@ -145,9 +276,18 @@ if ! command_exists node; then
   exit 1
 fi
 
+if [ "${UPDATE_MODE}" -eq 1 ]; then
+  refresh_apps_cache
+  exit $?
+fi
+
 if ! command_exists npm; then
   echo "npm is not installed."
   exit 1
+fi
+
+if [ "${ORIGINAL_ARGC}" -eq 0 ] && [ -z "${APP_NAME}" ] && [ -z "${APP_PATH}" ]; then
+  print_cli_hints
 fi
 
 # --------------------------------------------------
