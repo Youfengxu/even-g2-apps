@@ -57,11 +57,11 @@ For general G2 development documentation, see the [G2 development notes](https:/
 |    [chess](https://github.com/dmyster145/EvenChess) | Chess HUD app by @dmyster145 | ![chess](./media/chess.png) |
 |    [epub](https://github.com/chortya/epub-reader-g2) | Epub reader by @chortya | ![epub](./media/epub.png) ![epub2](./media/epub2.png) |
 |    [reddit](https://github.com/fuutott/rdt-even-g2-rddit-client) | Reddit feed and comments browser by @fuutott | ![reddit](./media/reddit.png) |
+|    [smart-cart](https://github.com/bryan-datastorm/smart-cart-even-g2) | Glanceable, hands-free grocery list by @bryan-datastorm | ![smart-cart](./media/smart-cart.png) |
 |    [stars](https://github.com/thibautrey/even-stars) | Real-time sky chart by @thibautrey | ![stars](./media/stars.png) |
 |    [transit](https://github.com/langerhans/even-transit) | Public transport planner by @langerhans | ![stars](./media/transport.png) |
 |    [weather](https://github.com/nickustinov/weather-even-g2) | Weather forecast by @nickustinov | ![weather](./media/weather.png) |
 |    [stt](https://github.com/nickustinov/stt-even-g2) | Real-time speech-to-text via [Soniox](https://soniox.com) by @nickustinov | |
-|    [smart-cart](https://github.com/bryan-datastorm/smart-cart-even-g2) | Glanceable, hands-free grocery list by @bryan-datastorm | |
 
 ---
 
