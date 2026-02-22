@@ -154,7 +154,7 @@ There are two kinds of apps:
 
 ### Built-in apps (`apps/`)
 
-Small apps that live directly in the `apps/` directory (demo, clock, timer, quicktest, restapi). They share the even-dev `index.html` and `src/Main.ts` loader, and export an `AppModule` interface from `apps/<name>/index.ts`.
+Small apps that live directly in the `apps/` directory (demo, clock, timer, quicktest, restapi). They share the even-dev `index.html` and `src/main.ts` loader, and export an `AppModule` interface from `apps/<name>/index.ts`.
 
 ### External apps
 
@@ -320,7 +320,7 @@ Quicktest expectations for generated source:
 apps.json           -> External app registry (git URLs or local paths)
 start-even.sh       -> CLI launcher: app selection, deps, Vite, simulator
 index.html          -> Entry point for built-in apps
-src/Main.ts         -> Built-in app loader (AppModule discovery)
+src/main.ts         -> Built-in app loader (AppModule discovery)
 apps/               -> Built-in apps (demo, clock, timer, quicktest, restapi)
 apps/_shared/       -> Shared types (AppModule contract)
 vite-plugins/       -> Custom Vite plugins for external apps
@@ -337,7 +337,7 @@ flowchart TD
   A["start-even.sh"] --> B["Vite dev server (APP_NAME)"]
 
   B --> C["Built-in app?"]
-  C -- Yes --> D["index.html + src/Main.ts"]
+  C -- Yes --> D["index.html + src/main.ts"]
   D --> E["apps/<app>/index.ts (AppModule)"]
 
   C -- No --> F["External app's own index.html"]

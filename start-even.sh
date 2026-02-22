@@ -28,6 +28,13 @@ while [ "$#" -gt 0 ]; do
         shift
       fi
       ;;
+    --devenv-update)
+        echo "EVEN-DEV DEPENDECY UPDATE"
+        echo "|- Clean node_modules and package-lock.json"
+        rm -rf node_modules package-lock.json
+        echo "|- Installing project dependencies..."
+        npm install
+      ;;
     --*)
       echo "Unknown option: $1" >&2
       echo "Usage: ./start-even.sh [app-name] [--update [app-name]]" >&2
@@ -77,6 +84,7 @@ Command hints:
   ./start-even.sh <app-name>       # run one app directly
   ./start-even.sh --update         # refresh all git apps from apps.json
   ./start-even.sh --update <name>  # refresh one git app from apps.json
+  ./start-even.sh --devenv-update  # update even-dev npn dependencies from package.json
 EOF
 }
 
