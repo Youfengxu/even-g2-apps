@@ -354,14 +354,12 @@ Quicktest expectations for generated source:
 ```
 apps.json           -> External app registry (git URLs or local paths)
 start-even.sh       -> CLI launcher: app selection, deps, Vite, simulator
-index.html          -> Fallback launcher shell (used when no standalone app HTML is selected)
-src/main.ts         -> Fallback launcher page script (standalone-only guidance)
 apps/               -> Standalone built-in apps (each has its own index.html + src/main.ts)
 apps/_shared/       -> Shared helpers for standalone apps (dev/test/runtime utilities)
 scripts/            -> Helper scripts (for example pack-app.sh)
 vite-plugins/       -> Custom Vite plugins for root dev server / registry apps
 .apps-cache/        -> Auto-cloned external app repositories (gitignored)
-vite.config.ts      -> Root Vite config (serves selected standalone app HTML, fs.allow, plugins)
+vite.config.ts      -> Root Vite config (serves the selected standalone app HTML, fs.allow, plugins)
 ```
 
 ---
@@ -371,19 +369,11 @@ vite.config.ts      -> Root Vite config (serves selected standalone app HTML, fs
 ```mermaid
 flowchart TD
   A["start-even.sh"] --> B["Vite dev server (APP_NAME + APP_PATH)"]
-
-  B --> C["Standalone app selected?"]
-  C -- Yes --> D["Selected app's own index.html"]
-  D --> E["Selected app's src/main.ts"]
-
-  C -- No --> F["Fallback root index.html + src/main.ts"]
-
-  E --> H["Even Hub SDK / bridge"]
-  F --> I["Launcher/help UI only"]
-
-  H <--> J["Even Hub Simulator"]
-
-  K["vite-plugins/"] --> B
+  B --> C["Selected app's own index.html"]
+  C --> D["Selected app's src/main.ts"]
+  D --> E["Even Hub SDK / bridge"]
+  E <--> F["Even Hub Simulator"]
+  G["vite-plugins/"] --> B
 ```
 
 ---
