@@ -7,5 +7,13 @@
   "tagline": "REST API tester with glasses controls for Even G2.",
   "description": "Standalone REST API tester for Even G2",
   "author": "even-dev",
-  "entrypoint": "index.html"
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": [
+      "evenhub.evenrealities.com"
+    ],
+    "fs": [
+      "./assets"
+    ]
+  }
 }

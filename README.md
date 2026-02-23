@@ -274,6 +274,12 @@ See the [reddit app's app.json](https://github.com/fuutott/rdt-even-g2-rddit-cli
 
 ### Packaging (`evenhub-cli`)
 
+Before packaging/deploying, log in to Even Hub CLI:
+
+```bash
+npx @evenrealities/evenhub-cli login
+```
+
 For built-in standalone apps under `apps/*`, use the helper script:
 
 ```bash

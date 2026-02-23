@@ -7,5 +7,13 @@
   "tagline": "Base template app for Even G2 standalone development.",
   "description": "Standalone base template app for Even G2",
   "author": "even-dev",
-  "entrypoint": "index.html"
+  "entrypoint": "index.html",
+  "permissions": {
+    "network": [
+      "evenhub.evenrealities.com"
+    ],
+    "fs": [
+      "./assets"
+    ]
+  }
 }
