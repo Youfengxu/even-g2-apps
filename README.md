@@ -272,30 +272,6 @@ Metadata file used by `evenhub-cli` for packaging and deployment:
 
 See the [reddit app's app.json](https://github.com/fuutott/rdt-even-g2-rddit-client) for a full example with permissions.
 
-### Packaging (`evenhub-cli`)
-
-Before packaging/deploying, log in to Even Hub CLI:
-
-```bash
-npx @evenrealities/evenhub-cli login
-```
-
-For built-in standalone apps under `apps/*`, use the helper script:
-
-```bash
-./scripts/pack-app.sh timer
-```
-
-This will build the app, then run `evenhub-cli pack app.json dist`, and produce `apps/timer/out.ehpk`.
-
-Manual equivalent:
-
-```bash
-cd apps/timer
-npm run build
-npx @evenrealities/evenhub-cli pack app.json dist
-```
-
 ### Connecting to the Even bridge
 
 ```ts
@@ -393,6 +369,32 @@ flowchart TD
 * UI components: [even-realities-ui](https://www.npmjs.com/package/@jappyjan/even-realities-ui) by @JappyJan
 * UIUX guidelines: [Figma](https://www.figma.com/design/X82y5uJvqMH95jgOfmV34j/Even-Realities---Software-Design-Guidelines--Public-?node-id=2922-80782&t=ZIxZJDitnBnZJOwb-1)
 * G2 development notes: [G2.md](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md)
+
+---
+
+### Packaging (`evenhub-cli`)
+
+Before packaging/deploying, log in to Even Hub CLI:
+
+```bash
+npx @evenrealities/evenhub-cli login
+```
+
+For built-in standalone apps under `apps/*`, use the helper script:
+
+```bash
+./scripts/pack-app.sh timer
+```
+
+This will build the app, then run `evenhub-cli pack app.json dist`, and produce `apps/timer/out.ehpk`.
+
+Manual equivalent:
+
+```bash
+cd apps/timer
+npm run build
+npx @evenrealities/evenhub-cli pack app.json dist
+```
 
 ---
 
