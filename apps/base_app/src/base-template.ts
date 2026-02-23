@@ -1,7 +1,22 @@
 import { EvenBetterSdk } from '@jappyjan/even-better-sdk'
 import { OsEventTypeList, type EvenHubEvent } from '@evenrealities/even_hub_sdk'
-import type { AppActions, SetStatus } from '../_shared/app-types'
-import { appendEventLog } from '../_shared/log'
+import { withTimeout } from '../../_shared/async'
+import { getRawEventType, normalizeEventType } from '../../_shared/even-events'
+import { appendEventLog } from '../../_shared/log'
+
+type SetStatus = (text: string) => void
+
+type AppActions = {
+  connect: () => Promise<void>
+  action: () => Promise<void>
+}
+
+export type BaseTemplateActions = AppActions & {
+  decrementCounter: () => Promise<void>
+  incrementCounter: (source?: string) => Promise<void>
+  resetCounter: () => Promise<void>
+  syncGlasses: () => Promise<void>
+}
 
 const THEME_OPTIONS = ['Blue', 'Green', 'Orange'] as const
 type ThemeName = (typeof THEME_OPTIONS)[number]
@@ -14,7 +29,6 @@ type TemplateState = {
 }
 
 type BrowserUi = {
-  root: HTMLDivElement
   preview: HTMLDivElement
   counterValue: HTMLSpanElement
   stateValue: HTMLSpanElement
@@ -73,60 +87,6 @@ function getEventTypeLabel(type: OsEventTypeList | undefined): string {
     default:
       return 'unknown'
   }
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      reject(new Error(`Operation timed out after ${timeoutMs}ms`))
-    }, timeoutMs)
-
-    promise
-      .then((value) => resolve(value))
-      .catch((error) => reject(error))
-      .finally(() => window.clearTimeout(timer))
-  })
-}
-
-function getRawEventType(event: EvenHubEvent): unknown {
-  const raw = (event.jsonData ?? {}) as Record<string, unknown>
-  return (
-    event.listEvent?.eventType ??
-    event.textEvent?.eventType ??
-    event.sysEvent?.eventType ??
-    (event as Record<string, unknown>).eventType ??
-    raw.eventType ??
-    raw.event_type ??
-    raw.Event_Type ??
-    raw.type
-  )
-}
-
-function normalizeEventType(rawEventType: unknown): OsEventTypeList | undefined {
-  if (typeof rawEventType === 'number') {
-    switch (rawEventType) {
-      case 0:
-        return OsEventTypeList.CLICK_EVENT
-      case 1:
-        return OsEventTypeList.SCROLL_TOP_EVENT
-      case 2:
-        return OsEventTypeList.SCROLL_BOTTOM_EVENT
-      case 3:
-        return OsEventTypeList.DOUBLE_CLICK_EVENT
-      default:
-        return undefined
-    }
-  }
-
-  if (typeof rawEventType === 'string') {
-    const value = rawEventType.toUpperCase()
-    if (value.includes('DOUBLE')) return OsEventTypeList.DOUBLE_CLICK_EVENT
-    if (value.includes('CLICK')) return OsEventTypeList.CLICK_EVENT
-    if (value.includes('SCROLL_TOP') || value.includes('UP')) return OsEventTypeList.SCROLL_TOP_EVENT
-    if (value.includes('SCROLL_BOTTOM') || value.includes('DOWN')) return OsEventTypeList.SCROLL_BOTTOM_EVENT
-  }
-
-  return undefined
 }
 
 function parseIncomingThemeIndex(event: EvenHubEvent): number {
@@ -254,17 +214,6 @@ function ensureTemplateStyles(): void {
       opacity: 0.85;
       margin-top: 6px;
     }
-    #base-app-web-controls {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    #base-app-web-controls button {
-      margin: 0;
-      padding: 10px;
-      font-size: 12px;
-      font-weight: 600;
-    }
     #base-app-metrics {
       font-size: 12px;
       line-height: 1.55;
@@ -315,15 +264,9 @@ function ensureBrowserPanel(syncToGlasses: () => Promise<void>): void {
   root.innerHTML = `
     <div id="base-app-preview">
       <div id="base-app-preview-title">Web App Preview Panel</div>
-      <div id="base-app-preview-subtitle">Use browser controls here, mirror compact state on glasses.</div>
+      <div id="base-app-preview-subtitle">Use controls above to modify state and mirror it on glasses.</div>
     </div>
     <div id="base-app-bar"><div id="base-app-bar-fill"></div></div>
-    <div id="base-app-web-controls">
-      <button id="base-app-minus" type="button">Counter -1</button>
-      <button id="base-app-plus" type="button">Counter +1</button>
-      <button id="base-app-reset" type="button">Reset</button>
-      <button id="base-app-sync" type="button">Sync Glasses</button>
-    </div>
     <div id="base-app-metrics">
       <div>Counter: <span id="base-app-counter">0</span></div>
       <div>State: <span id="base-app-state">idle</span></div>
@@ -333,10 +276,6 @@ function ensureBrowserPanel(syncToGlasses: () => Promise<void>): void {
   `
   appRoot.appendChild(root)
 
-  const minusBtn = root.querySelector('#base-app-minus') as HTMLButtonElement | null
-  const plusBtn = root.querySelector('#base-app-plus') as HTMLButtonElement | null
-  const resetBtn = root.querySelector('#base-app-reset') as HTMLButtonElement | null
-  const syncBtn = root.querySelector('#base-app-sync') as HTMLButtonElement | null
   const preview = root.querySelector('#base-app-preview') as HTMLDivElement | null
   const counterValue = root.querySelector('#base-app-counter') as HTMLSpanElement | null
   const stateValue = root.querySelector('#base-app-state') as HTMLSpanElement | null
@@ -344,12 +283,11 @@ function ensureBrowserPanel(syncToGlasses: () => Promise<void>): void {
   const lastEventValue = root.querySelector('#base-app-last-event') as HTMLSpanElement | null
   const barFill = root.querySelector('#base-app-bar-fill') as HTMLDivElement | null
 
-  if (!minusBtn || !plusBtn || !resetBtn || !syncBtn || !preview || !counterValue || !stateValue || !themeValue || !lastEventValue || !barFill) {
+  if (!preview || !counterValue || !stateValue || !themeValue || !lastEventValue || !barFill) {
     return
   }
 
   browserUi = {
-    root,
     preview,
     counterValue,
     stateValue,
@@ -357,34 +295,6 @@ function ensureBrowserPanel(syncToGlasses: () => Promise<void>): void {
     lastEventValue,
     barFill,
   }
-
-  minusBtn.addEventListener('click', () => {
-    state.counter = Math.max(0, state.counter - 1)
-    state.lastEvent = 'web: counter -1'
-    renderBrowserPanel()
-    void syncToGlasses()
-  })
-
-  plusBtn.addEventListener('click', () => {
-    state.counter += 1
-    state.lastEvent = 'web: counter +1'
-    renderBrowserPanel()
-    void syncToGlasses()
-  })
-
-  resetBtn.addEventListener('click', () => {
-    state.counter = 0
-    state.active = false
-    state.lastEvent = 'web: reset'
-    renderBrowserPanel()
-    void syncToGlasses()
-  })
-
-  syncBtn.addEventListener('click', () => {
-    state.lastEvent = 'web: manual sync'
-    renderBrowserPanel()
-    void syncToGlasses()
-  })
 
   renderBrowserPanel()
 }
@@ -429,6 +339,9 @@ function getBridgeTemplateClient(): TemplateClient {
     stateText.setContent(`Base Template | State: ${state.active ? 'active' : 'idle'} | Theme: ${getCurrentTheme()}`)
     counterText.setContent(`Counter: ${state.counter} | Last: ${state.lastEvent}`)
 
+    // even-better-sdk is great for content updates; if this template later starts
+    // changing element positions/sizes, prefer a full `page.render()` path for those
+    // layout updates because partial text updates only change content.
     if (!startupRendered) {
       await page.render()
       startupRendered = true
@@ -444,7 +357,7 @@ function getBridgeTemplateClient(): TemplateClient {
   }
 
   sdk.addEventListener((event) => {
-    const eventType = normalizeEventType(getRawEventType(event))
+    const eventType = normalizeEventType(getRawEventType(event), OsEventTypeList)
     updateStateFromHubSelection(event, eventType)
 
     switch (eventType) {
@@ -488,12 +401,33 @@ async function initTemplate(timeoutMs = 4000): Promise<{ template: TemplateClien
   }
 }
 
-export function createBaseAppActions(setStatus: SetStatus): AppActions {
+export function createBaseAppActions(setStatus: SetStatus): BaseTemplateActions {
   ensureBrowserPanel(async () => {
     if (templateClient) {
       await templateClient.syncToGlasses()
     }
   })
+
+  async function syncIfConnected(): Promise<boolean> {
+    if (!templateClient) {
+      setStatus('Base template: not connected')
+      appendEventLog('Base template: action blocked (not connected)')
+      return false
+    }
+
+    renderBrowserPanel()
+    await templateClient.syncToGlasses()
+    return true
+  }
+
+  async function incrementCounter(source = 'web: main action button'): Promise<void> {
+    state.counter += 1
+    state.lastEvent = source
+    if (await syncIfConnected()) {
+      setStatus('Base template: counter incremented and synced.')
+      appendEventLog(`Base template: ${source}`)
+    }
+  }
 
   return {
     async connect() {
@@ -521,19 +455,32 @@ export function createBaseAppActions(setStatus: SetStatus): AppActions {
     },
 
     async action() {
-      if (!templateClient) {
-        setStatus('Base template: not connected')
-        appendEventLog('Base template: action blocked (not connected)')
-        return
+      await incrementCounter('web: main action button')
+    },
+    incrementCounter,
+    async decrementCounter() {
+      state.counter = Math.max(0, state.counter - 1)
+      state.lastEvent = 'web: counter -1'
+      if (await syncIfConnected()) {
+        setStatus('Base template: counter decremented and synced.')
+        appendEventLog('Base template: web: counter -1')
       }
-
-      state.counter += 1
-      state.lastEvent = 'web: main action button'
-      renderBrowserPanel()
-      await templateClient.syncToGlasses()
-
-      setStatus('Base template: counter incremented and synced.')
-      appendEventLog('Base template: main action increment')
+    },
+    async resetCounter() {
+      state.counter = 0
+      state.active = false
+      state.lastEvent = 'web: reset'
+      if (await syncIfConnected()) {
+        setStatus('Base template: reset and synced.')
+        appendEventLog('Base template: web: reset')
+      }
+    },
+    async syncGlasses() {
+      state.lastEvent = 'web: manual sync'
+      if (await syncIfConnected()) {
+        setStatus('Base template: synced to glasses.')
+        appendEventLog('Base template: web: manual sync')
+      }
     },
   }
 }

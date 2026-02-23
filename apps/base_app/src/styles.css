@@ -1,0 +1,26 @@
+@import "../node_modules/@jappyjan/even-realities-ui/dist/even-realities-ui.css";
+@import "../../_shared/styles.css";
+
+body {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.status-line {
+  margin: 0;
+}
+
+#event-log { min-height: 120px; max-height: 260px; overflow: auto; }
+
+@media (min-width: 420px) {
+  .row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

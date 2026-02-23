@@ -1,0 +1,11 @@
+{
+  "package_id": "com.bnm.evendev.quicktest",
+  "edition": "202601",
+  "name": "Quicktest",
+  "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Render generated Even UI layouts quickly on glasses.",
+  "description": "Standalone quicktest renderer for Even G2 generated UI source",
+  "author": "even-dev",
+  "entrypoint": "index.html"
+}

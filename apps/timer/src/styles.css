@@ -1,0 +1,321 @@
+@import "../node_modules/@jappyjan/even-realities-ui/dist/even-realities-ui.css";
+@import "../../_shared/styles.css";
+
+:root {
+  color-scheme: light;
+  --timer-bg: var(--app-bg);
+  --timer-surface: var(--app-surface);
+  --timer-surface-2: var(--app-surface-muted);
+  --timer-border: var(--app-border);
+  --timer-border-strong: #bfdbfe;
+  --timer-text: var(--app-text);
+  --timer-text-muted: var(--app-text-muted);
+  --timer-text-faint: #6b7280;
+  --timer-accent: #2563eb;
+  --timer-accent-2: #0891b2;
+}
+
+html,
+body {
+  background: var(--color-bg, var(--timer-bg));
+  color: var(--color-tc-1, var(--timer-text));
+}
+
+body {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+#app {
+  display: grid;
+  gap: 12px;
+}
+
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--color-bg-elevated, var(--timer-surface));
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--timer-accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.05;
+  color: var(--timer-text);
+}
+
+.page-subtitle {
+  margin: 4px 0 0;
+  color: var(--color-tc-2, var(--timer-text-muted));
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.hero-pill {
+  color: #0f172a;
+  background: #ecfeff;
+  border: 1px solid #bae6fd;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.hero-pill.is-ready {
+  color: #1e3a8a;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.hero-pill.is-connecting {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.hero-pill.is-connected {
+  color: #065f46;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.hero-pill.is-running {
+  color: #5b21b6;
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.hero-pill.is-mock {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.hero-pill.is-error {
+  color: #991b1b;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.card {
+  background: var(--color-bg-elevated, var(--timer-surface));
+  border: 1px solid var(--color-border, var(--timer-border));
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+}
+
+.section-label {
+  margin: 0 0 8px;
+  color: var(--timer-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--timer-border);
+  background: var(--timer-surface-2);
+  color: var(--timer-text);
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.btn.compact {
+  padding: 10px 12px;
+}
+
+.btn:hover {
+  background: #f8fafc;
+  border-color: var(--timer-border-strong);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  border-color: var(--timer-border-strong);
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.02)),
+    var(--timer-surface-2);
+}
+
+.btn-primary:hover {
+  background:
+    linear-gradient(180deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.03)),
+    #f8fafc;
+}
+
+.btn-ghost {
+  background: #fff;
+}
+
+.btn-title {
+  font-weight: 700;
+  color: var(--timer-text);
+}
+
+.btn-subtitle {
+  font-size: 0.78rem;
+  color: var(--timer-text-muted);
+}
+
+.preset-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.preset-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--timer-border);
+  background: #fff;
+  color: var(--timer-text);
+  padding: 11px 12px;
+  font-size: 0.95rem;
+}
+
+.preset-input::placeholder {
+  color: var(--timer-text-faint);
+}
+
+.preset-input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  outline-offset: 1px;
+  border-color: var(--timer-border-strong);
+}
+
+.preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--timer-border);
+  background: #f8fafc;
+  padding: 4px 6px 4px 10px;
+}
+
+.preset-chip__time {
+  color: var(--timer-text);
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
+.preset-chip__remove {
+  appearance: none;
+  border: 1px solid var(--timer-border);
+  background: #fff;
+  color: var(--timer-text-muted);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.preset-chip__remove:hover {
+  color: var(--timer-text);
+  border-color: var(--timer-border-strong);
+  background: #f8fafc;
+}
+
+.hint {
+  margin: 0;
+  color: var(--timer-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+code {
+  color: var(--timer-text);
+  background: #f8fafc;
+  border: 1px solid var(--timer-border);
+  border-radius: 6px;
+  padding: 1px 4px;
+}
+
+.log-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--timer-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+pre {
+  margin: 0;
+  padding: 10px;
+  min-height: 180px;
+  max-height: 380px;
+  overflow: auto;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--timer-border);
+  color: var(--timer-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@media (min-width: 420px) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .preset-form {
+    grid-template-columns: 1fr auto;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 380px) {
+  .hero {
+    flex-direction: column;
+  }
+
+  .hero-pill {
+    align-self: flex-start;
+  }
+}

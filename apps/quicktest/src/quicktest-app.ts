@@ -9,19 +9,19 @@ import {
   waitForEvenAppBridge,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
-import type { AppActions, SetStatus } from '../_shared/app-types'
-import { appendEventLog } from '../_shared/log'
-import generatedUiSource from './generated-ui.ts?raw'
+import { withTimeout } from '../../_shared/async'
+import { getRawEventType, normalizeEventType } from '../../_shared/even-events'
+import { appendEventLog } from '../../_shared/log'
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
-    promise
-      .then((value) => resolve(value))
-      .catch((error) => reject(error))
-      .finally(() => window.clearTimeout(timer))
-  })
+type SetStatus = (text: string) => void
+
+type AppActions = {
+  connect: () => Promise<void>
+  render: () => Promise<void>
+  action: () => Promise<void>
 }
+
+import generatedUiSource from './generated-ui.ts?raw'
 
 function compileContainerFromGeneratedSource(source: string): CreateStartUpPageContainer {
   const sanitizedSource = source
@@ -61,47 +61,6 @@ function getRebuildPayload(container: CreateStartUpPageContainer): Record<string
     return model.toJson()
   }
   return container as unknown as Record<string, unknown>
-}
-
-function getRawEventType(event: EvenHubEvent): unknown {
-  const raw = (event.jsonData ?? {}) as Record<string, unknown>
-  return (
-    event.listEvent?.eventType ??
-    event.textEvent?.eventType ??
-    event.sysEvent?.eventType ??
-    (event as Record<string, unknown>).eventType ??
-    raw.eventType ??
-    raw.event_type ??
-    raw.Event_Type ??
-    raw.type
-  )
-}
-
-function normalizeEventType(rawEventType: unknown): OsEventTypeList | undefined {
-  if (typeof rawEventType === 'number') {
-    switch (rawEventType) {
-      case 0:
-        return OsEventTypeList.CLICK_EVENT
-      case 1:
-        return OsEventTypeList.SCROLL_TOP_EVENT
-      case 2:
-        return OsEventTypeList.SCROLL_BOTTOM_EVENT
-      case 3:
-        return OsEventTypeList.DOUBLE_CLICK_EVENT
-      default:
-        return undefined
-    }
-  }
-
-  if (typeof rawEventType === 'string') {
-    const value = rawEventType.toUpperCase()
-    if (value.includes('DOUBLE')) return OsEventTypeList.DOUBLE_CLICK_EVENT
-    if (value.includes('CLICK')) return OsEventTypeList.CLICK_EVENT
-    if (value.includes('SCROLL_TOP') || value.includes('UP')) return OsEventTypeList.SCROLL_TOP_EVENT
-    if (value.includes('SCROLL_BOTTOM') || value.includes('DOWN')) return OsEventTypeList.SCROLL_BOTTOM_EVENT
-  }
-
-  return undefined
 }
 
 function eventTypeLabel(eventType: OsEventTypeList | undefined): string {
@@ -153,8 +112,8 @@ function ensureQuicktestEditorUi(initialSource: string, setStatus: SetStatus): {
   label.textContent = 'Quicktest source (paste generated-ui drop-in code):'
 
   const exampleLink = document.createElement('a')
-  const editorUrl = 'http://localhost:5174/even-ui-builder/'
-  exampleLink.href = '#'
+  const editorUrl = 'http://localhost:5173/even-ui-builder/'
+  exampleLink.href = editorUrl
   exampleLink.target = '_blank'
   exampleLink.rel = 'noreferrer'
   exampleLink.textContent = `Open editor (external browser): ${editorUrl}`
@@ -168,28 +127,20 @@ function ensureQuicktestEditorUi(initialSource: string, setStatus: SetStatus): {
   exampleLink.addEventListener('click', async (event) => {
     event.preventDefault()
     appendEventLog('Quicktest UI: open-editor link clicked')
-
     try {
-      const response = await fetch('/__open_editor')
+      const response = await fetch(`/__open_editor?url=${encodeURIComponent(editorUrl)}`)
       if (response.ok) {
-        const payload = await response.json() as { url?: string }
-        setStatus(`Quicktest: opened editor in external browser (${payload.url ?? editorUrl})`)
-        appendEventLog(`Quicktest UI: external editor opened (${payload.url ?? editorUrl})`)
+        setStatus(`Quicktest: opened editor in browser (${editorUrl})`)
+        appendEventLog(`Quicktest UI: external editor opened (${editorUrl})`)
         return
       }
-      const payload = await response.json().catch(() => ({})) as { error?: string }
-      if (payload.error) {
-        setStatus(`Quicktest: ${payload.error} Start it with ./misc/editor.sh`)
-        appendEventLog(`Quicktest UI: open-editor failed (${payload.error})`)
-        return
-      }
-      setStatus('Quicktest: could not open editor. Start it with ./misc/editor.sh')
-      appendEventLog('Quicktest UI: open-editor failed (unknown response)')
-    } catch (error) {
-      console.error('[quicktest] open editor endpoint failed', error)
-      setStatus('Quicktest: failed to call open-editor endpoint. Restart ./start-even.sh')
-      appendEventLog('Quicktest UI: open-editor endpoint request failed')
+    } catch {
+      // Fall back to window.open for standalone app dev outside even-dev root Vite.
     }
+
+    window.open(editorUrl, '_blank', 'noopener,noreferrer')
+    setStatus(`Quicktest: attempted to open editor (${editorUrl})`)
+    appendEventLog(`Quicktest UI: external editor open requested (${editorUrl})`)
   })
 
   const textarea = document.createElement('textarea')
@@ -201,29 +152,7 @@ function ensureQuicktestEditorUi(initialSource: string, setStatus: SetStatus): {
   textarea.style.fontFamily = 'ui-monospace, SFMono-Regular, Menlo, monospace'
   textarea.style.fontSize = '12px'
 
-  const controls = document.createElement('div')
-  controls.style.display = 'flex'
-  controls.style.gap = '8px'
-
-  const applyButton = document.createElement('button')
-  applyButton.type = 'button'
-  applyButton.textContent = 'Use textarea source'
-  applyButton.addEventListener('click', () => {
-    setStatus('Quicktest: textarea source set. Click Render Quicktest UI.')
-    appendEventLog('Quicktest UI: textarea source selected')
-  })
-
-  const resetButton = document.createElement('button')
-  resetButton.type = 'button'
-  resetButton.textContent = 'Reset to file source'
-  resetButton.addEventListener('click', () => {
-    textarea.value = initialSource
-    setStatus('Quicktest: reset textarea to apps/quicktest/generated-ui.ts')
-    appendEventLog('Quicktest UI: source reset to file')
-  })
-
-  controls.append(applyButton, resetButton)
-  panel.append(label, exampleLink, textarea, controls)
+  panel.append(label, exampleLink, textarea)
   appRoot.append(panel)
 
   return {
@@ -248,7 +177,7 @@ export function createQuicktestActions(setStatus: SetStatus): AppActions {
     appendEventLog('Quicktest: bridge event logging attached')
     bridgeRef.onEvenHubEvent((event) => {
       const rawEventType = getRawEventType(event)
-      const eventType = normalizeEventType(rawEventType)
+      const eventType = normalizeEventType(rawEventType, OsEventTypeList)
       const selected = event.listEvent?.currentSelectItemName ?? event.listEvent?.currentSelectItemIndex ?? '-'
       const containerName = event.listEvent?.containerName ?? event.textEvent?.containerName ?? '-'
       const line = `Quicktest glass: ${eventTypeLabel(eventType)} | container=${containerName} | selected=${selected}`
@@ -265,31 +194,57 @@ export function createQuicktestActions(setStatus: SetStatus): AppActions {
     eventLoopRegistered = true
   }
 
+  async function renderCurrentSource() {
+    const source = editorUi.getSource()
+    const container = compileContainerFromGeneratedSource(source)
+    appendEventLog('Quicktest: render button clicked')
+    if (!bridgeConnected || !bridgeRef) {
+      setStatus('Quicktest: connecting to bridge...')
+      bridgeRef = await withTimeout(waitForEvenAppBridge(), 10_000)
+      bridgeConnected = true
+      appendEventLog('Quicktest: bridge connected')
+      registerEventLogging()
+    } else {
+      registerEventLogging()
+    }
+
+    if (!didRenderStartup) {
+      await bridgeRef.createStartUpPageContainer(container)
+      didRenderStartup = true
+      setStatus('Quicktest: startup UI rendered from source input')
+      appendEventLog('Quicktest: startup UI created')
+      return
+    }
+
+    await bridgeRef.rebuildPageContainer(new RebuildPageContainer(getRebuildPayload(container)))
+    setStatus('Quicktest: page rebuilt from source input')
+    appendEventLog('Quicktest: page rebuilt')
+  }
+
   return {
     async connect() {
       try {
-        const source = editorUi.getSource()
-        const container = compileContainerFromGeneratedSource(source)
-        appendEventLog('Quicktest: render button clicked')
         setStatus('Quicktest: connecting to bridge...')
         if (!bridgeConnected || !bridgeRef) {
           bridgeRef = await withTimeout(waitForEvenAppBridge(), 10_000)
           bridgeConnected = true
           appendEventLog('Quicktest: bridge connected')
+        } else {
+          appendEventLog('Quicktest: bridge already connected')
         }
         registerEventLogging()
+        setStatus('Quicktest: bridge connected. Rendering page...')
+        await renderCurrentSource()
+      } catch (error) {
+        console.error('[quicktest] bridge connect failed', error)
+        setStatus('Quicktest: failed to connect to bridge')
+        appendEventLog('Quicktest: bridge connect failed')
+      }
+    },
 
-        if (!didRenderStartup) {
-          await bridgeRef.createStartUpPageContainer(container)
-          didRenderStartup = true
-          setStatus('Quicktest: startup UI rendered from source input')
-          appendEventLog('Quicktest: startup UI created')
-          return
-        }
-
-        await bridgeRef.rebuildPageContainer(new RebuildPageContainer(getRebuildPayload(container)))
-        setStatus('Quicktest: page rebuilt from source input')
-        appendEventLog('Quicktest: page rebuilt')
+    async render() {
+      try {
+        await renderCurrentSource()
       } catch (error) {
         console.error('[quicktest] connect failed', error)
         setStatus('Quicktest: failed to render source input (check code syntax/container)')
@@ -299,7 +254,7 @@ export function createQuicktestActions(setStatus: SetStatus): AppActions {
 
     async action() {
       editorUi.resetToFileSource()
-      setStatus('Quicktest: source reset to apps/quicktest/generated-ui.ts')
+      setStatus('Quicktest: source reset to apps/quicktest/src/generated-ui.ts')
       appendEventLog('Quicktest: source reset button clicked')
     },
   }

@@ -2,11 +2,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
-import type { Alias, Plugin } from 'vite'
+import type { Plugin } from 'vite'
 import { loadAppPlugins } from './vite-plugins'
 
 // ---------------------------------------------------------------------------
-// External app registry (apps.json + APP_PATH env override)
+// Standalone app registry (apps.json + APP_PATH env override)
 // ---------------------------------------------------------------------------
 
 const APPS_CACHE_DIR = resolve('.apps-cache')
@@ -22,7 +22,7 @@ function resolveGitEntry(name: string, value: string): string {
   return subpath ? resolve(base, subpath) : base
 }
 
-function loadExternalApps(): Record<string, string> {
+function loadStandaloneApps(): Record<string, string> {
   const apps: Record<string, string> = {}
 
   if (existsSync('apps.json')) {
@@ -32,7 +32,7 @@ function loadExternalApps(): Record<string, string> {
     }
   }
 
-  const appName = process.env.APP_NAME ?? process.env.VITE_APP_NAME ?? ''
+const appName = process.env.APP_NAME ?? process.env.VITE_APP_NAME ?? ''
   const appPath = process.env.APP_PATH ?? ''
   if (appName && appPath) {
     apps[appName] = resolve(appPath)
@@ -41,15 +41,15 @@ function loadExternalApps(): Record<string, string> {
   return apps
 }
 
-const externalApps = loadExternalApps()
+const standaloneApps = loadStandaloneApps()
 
 // ---------------------------------------------------------------------------
-// External app HTML plugin: serve the external app's own index.html
+// Selected standalone app HTML: serve the app's own index.html
 // ---------------------------------------------------------------------------
 
-function externalAppHtmlPlugin(): Plugin | null {
+function standaloneAppHtmlPlugin(): Plugin | null {
   const selectedApp = process.env.VITE_APP_NAME ?? process.env.APP_NAME ?? ''
-  const appDir = externalApps[selectedApp]
+  const appDir = standaloneApps[selectedApp]
   if (!appDir) return null
 
   const absAppDir = resolve(appDir)
@@ -87,19 +87,12 @@ function externalAppHtmlPlugin(): Plugin | null {
 }
 
 // ---------------------------------------------------------------------------
-// Vite aliases + fs.allow from external apps
+// fs.allow from selected standalone app directories
 // ---------------------------------------------------------------------------
-
-function buildAliases(): Alias[] {
-  return Object.entries(externalApps).map(([name, absPath]) => ({
-    find: `apps/${name}`,
-    replacement: absPath,
-  }))
-}
 
 function buildFsAllow(): string[] {
   const dirs = new Set<string>()
-  for (const absPath of Object.values(externalApps)) {
+  for (const absPath of Object.values(standaloneApps)) {
     dirs.add(absPath)
     dirs.add(resolve(absPath, '..'))
   }
@@ -112,12 +105,9 @@ function buildFsAllow(): string[] {
 
 export default defineConfig({
   plugins: [
-    externalAppHtmlPlugin(),
-    ...loadAppPlugins({ externalApps }),
+    standaloneAppHtmlPlugin(),
+    ...loadAppPlugins({ externalApps: standaloneApps }),
   ].filter(Boolean),
-  resolve: {
-    alias: buildAliases(),
-  },
   server: {
     host: true,
     port: 5173,

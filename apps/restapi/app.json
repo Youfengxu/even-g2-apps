@@ -1,0 +1,11 @@
+{
+  "package_id": "com.bnm.evendev.restapi",
+  "edition": "202601",
+  "name": "REST API",
+  "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "REST API tester with glasses controls for Even G2.",
+  "description": "Standalone REST API tester for Even G2",
+  "author": "even-dev",
+  "entrypoint": "index.html"
+}

@@ -1,0 +1,146 @@
+:root {
+  color-scheme: light;
+  --app-bg: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-muted: #f6f8fb;
+  --app-border: #e5e7eb;
+  --app-border-strong: #d1d5db;
+  --app-text: #111827;
+  --app-text-muted: #6b7280;
+  --app-accent: #2563eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app {
+  display: grid;
+  gap: 12px;
+}
+
+.top-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.btn.connect-glasses-btn,
+.btn.connect-glasses-btn.btn-primary {
+  width: 100%;
+  background: var(--color-bc-highlight);
+  border-color: var(--color-bc-highlight);
+  color: var(--color-tc-highlight);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.btn.connect-glasses-btn:hover,
+.btn.connect-glasses-btn.btn-primary:hover {
+  background: var(--color-bc-highlight);
+  border-color: var(--color-bc-highlight);
+  color: var(--color-tc-highlight);
+}
+
+.btn.connect-glasses-btn:active,
+.btn.connect-glasses-btn.btn-primary:active {
+  background: var(--color-bc-highlight);
+  border-color: var(--color-bc-highlight);
+}
+
+.card {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.05);
+}
+
+button,
+.btn {
+  appearance: none;
+  border: 1px solid var(--app-border-strong);
+  background: #fff;
+  color: var(--app-text);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.btn {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.btn:hover {
+  background: #f8fafc;
+}
+
+.btn-primary {
+  border-color: #bfdbfe;
+}
+
+button:disabled,
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--app-border-strong);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--app-text);
+}
+
+#event-log {
+  margin: 0;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface-muted);
+  color: var(--app-text);
+  border-radius: 10px;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--app-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.status,
+.status-line {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 0.88rem;
+}
+
+.log-title {
+  margin: 0 0 8px;
+  color: var(--app-text-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}

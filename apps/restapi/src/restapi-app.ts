@@ -10,8 +10,17 @@ import {
   type EvenAppBridge,
   type EvenHubEvent,
 } from '@evenrealities/even_hub_sdk'
-import type { AppActions, SetStatus } from '../_shared/app-types'
-import { appendEventLog } from '../_shared/log'
+import { withTimeout } from '../../_shared/async'
+import { getRawEventType, normalizeEventType } from '../../_shared/even-events'
+import { appendEventLog } from '../../_shared/log'
+
+type SetStatus = (text: string) => void
+
+type AppActions = {
+  connect: () => Promise<void>
+  action: () => Promise<void>
+}
+
 import { fetchAsText } from './http'
 import {
   clampIndex,
@@ -67,16 +76,6 @@ const bridgeState: {
 let bridgeDisplay: BridgeDisplay | null = null
 let activeUi: RestUiState | null = null
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(`Operation timed out after ${timeoutMs}ms`)), timeoutMs)
-    promise
-      .then((value) => resolve(value))
-      .catch((error) => reject(error))
-      .finally(() => window.clearTimeout(timer))
-  })
-}
-
 function getFilteredCommands(): RestCommand[] {
   return store.filtered(bridgeState.activeTagFilter)
 }
@@ -84,47 +83,6 @@ function getFilteredCommands(): RestCommand[] {
 function buildFilterStatus(): string {
   const filtered = getFilteredCommands()
   return `Filter: ${getTagFilterLabel(bridgeState.activeTagFilter)} | ${filtered.length} cmd(s)`
-}
-
-function getRawEventType(event: EvenHubEvent): unknown {
-  const raw = (event.jsonData ?? {}) as Record<string, unknown>
-  return (
-    event.listEvent?.eventType ??
-    event.textEvent?.eventType ??
-    event.sysEvent?.eventType ??
-    (event as Record<string, unknown>).eventType ??
-    raw.eventType ??
-    raw.event_type ??
-    raw.Event_Type ??
-    raw.type
-  )
-}
-
-function normalizeEventType(rawEventType: unknown): OsEventTypeList | undefined {
-  if (typeof rawEventType === 'number') {
-    switch (rawEventType) {
-      case 0:
-        return OsEventTypeList.CLICK_EVENT
-      case 1:
-        return OsEventTypeList.SCROLL_TOP_EVENT
-      case 2:
-        return OsEventTypeList.SCROLL_BOTTOM_EVENT
-      case 3:
-        return OsEventTypeList.DOUBLE_CLICK_EVENT
-      default:
-        return undefined
-    }
-  }
-
-  if (typeof rawEventType === 'string') {
-    const value = rawEventType.toUpperCase()
-    if (value.includes('DOUBLE')) return OsEventTypeList.DOUBLE_CLICK_EVENT
-    if (value.includes('CLICK')) return OsEventTypeList.CLICK_EVENT
-    if (value.includes('SCROLL_TOP') || value.includes('UP')) return OsEventTypeList.SCROLL_TOP_EVENT
-    if (value.includes('SCROLL_BOTTOM') || value.includes('DOWN')) return OsEventTypeList.SCROLL_BOTTOM_EVENT
-  }
-
-  return undefined
 }
 
 function parseIncomingSelection(
@@ -307,7 +265,7 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
 
     const labels = filteredCommands.map((command) => toGlassLabel(command))
     const rawEventType = getRawEventType(event)
-    let eventType = normalizeEventType(rawEventType)
+    let eventType = normalizeEventType(rawEventType, OsEventTypeList)
 
     const incoming = parseIncomingSelection(event, labels)
     const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < filteredCommands.length

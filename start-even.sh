@@ -29,11 +29,12 @@ while [ "$#" -gt 0 ]; do
       fi
       ;;
     --devenv-update)
-        echo "EVEN-DEV DEPENDECY UPDATE"
+        echo "EVEN-DEV DEPENDENCY UPDATE"
         echo "|- Clean node_modules and package-lock.json"
         rm -rf node_modules package-lock.json
         echo "|- Installing project dependencies..."
         npm install
+        exit $?
       ;;
     --*)
       echo "Unknown option: $1" >&2
@@ -238,6 +239,112 @@ discover_apps () {
   printf '%s\n' "${apps[@]}" | awk '!seen[$0]++'
 }
 
+is_standalone_app_dir () {
+  local dir="$1"
+
+  [ -d "${dir}" ] || return 1
+  [ -f "${dir}/index.html" ] || return 1
+
+  if [ -f "${dir}/src/main.ts" ] || [ -f "${dir}/src/main.tsx" ] || [ -f "${dir}/src/main.js" ] || [ -f "${dir}/src/main.jsx" ]; then
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_standalone_app_dir () {
+  local dir="$1"
+  local app_name="$2"
+  local source_label="$3"
+
+  if [ -n "${dir}" ] && ! is_standalone_app_dir "${dir}"; then
+    echo "${source_label} app '${app_name}' is missing standalone files (expected ${dir}/index.html and ${dir}/src/main.*)." >&2
+    exit 1
+  fi
+}
+
+install_app_dependencies_if_needed () {
+  local dir="$1"
+
+  if [ -z "${dir}" ] || [ ! -f "${dir}/package.json" ]; then
+    return
+  fi
+
+  if [ ! -d "${dir}/node_modules" ]; then
+    echo "Installing dependencies for ${dir}..."
+    npm --prefix "${dir}" install
+    return
+  fi
+
+  if ! npm --prefix "${dir}" ls --depth=0 >/dev/null 2>&1; then
+    echo "Refreshing dependencies for ${dir} (existing node_modules is stale or incomplete)..."
+    npm --prefix "${dir}" install
+  fi
+}
+
+clone_selected_registry_app_if_needed () {
+  local selected_app="$1"
+
+  [ -f "apps.json" ] || return 0
+
+  local app_url
+  app_url="$(node -e "
+    const r = JSON.parse(require('fs').readFileSync('apps.json','utf8'));
+    const v = r['${selected_app}'] || '';
+    const base = v.split('#')[0];
+    if (base.startsWith('https://') || base.startsWith('git@')) console.log(base);
+  ")"
+
+  if [ -z "${app_url}" ]; then
+    return 0
+  fi
+
+  local cache_dir=".apps-cache/${selected_app}"
+  if [ ! -d "${cache_dir}" ]; then
+    echo "Cloning ${selected_app} from ${app_url}..."
+    git clone "${app_url}" "${cache_dir}"
+  fi
+}
+
+resolve_selected_app_dir () {
+  local selected_app="$1"
+
+  if [ -d "apps/${selected_app}" ]; then
+    echo "apps/${selected_app}"
+    return
+  fi
+
+  if [ -d ".apps-cache/${selected_app}" ]; then
+    echo ".apps-cache/${selected_app}"
+    return
+  fi
+
+  echo ""
+}
+
+source_label_for_app_dir () {
+  local dir="$1"
+  case "${dir}" in
+    apps/*) echo "Built-in" ;;
+    .apps-cache/*) echo "Registry" ;;
+    *) echo "Selected" ;;
+  esac
+}
+
+prepare_selected_app_dir () {
+  local app_dir="$1"
+  local selected_app="$2"
+
+  [ -n "${app_dir}" ] || return 0
+
+  local source_label
+  source_label="$(source_label_for_app_dir "${app_dir}")"
+  ensure_standalone_app_dir "${app_dir}" "${selected_app}" "${source_label}"
+  RESOLVED_APP_PATH="$(cd "${app_dir}" && pwd)"
+  echo "App mode: standalone (${app_dir})"
+  install_app_dependencies_if_needed "${app_dir}"
+}
+
 resolve_app_selection () {
   local apps=()
   while IFS= read -r app; do
@@ -350,51 +457,16 @@ if [ -n "${APP_PATH}" ]; then
   fi
   SELECTED_APP="${APP_NAME}"
   echo "Selected app: ${SELECTED_APP} (from APP_PATH=${APP_PATH})"
-
-  if [ -f "${RESOLVED_APP_PATH}/package.json" ] && [ ! -d "${RESOLVED_APP_PATH}/node_modules" ]; then
-    echo "Installing dependencies for ${RESOLVED_APP_PATH}..."
-    npm --prefix "${RESOLVED_APP_PATH}" install
-  fi
+  ensure_standalone_app_dir "${RESOLVED_APP_PATH}" "${SELECTED_APP}" "Selected"
+  install_app_dependencies_if_needed "${RESOLVED_APP_PATH}"
 else
   RESOLVED_APP_PATH=""
   SELECTED_APP="$(resolve_app_selection)"
   echo "Selected app: ${SELECTED_APP}"
 
-  # --------------------------------------------------
-  # Clone selected app from apps.json if it's a git URL
-  # --------------------------------------------------
-
-  if [ -f "apps.json" ]; then
-    APP_URL="$(node -e "
-      const r = JSON.parse(require('fs').readFileSync('apps.json','utf8'));
-      const v = r['${SELECTED_APP}'] || '';
-      const base = v.split('#')[0];
-      if (base.startsWith('https://') || base.startsWith('git@')) console.log(base);
-    ")"
-    if [ -n "${APP_URL}" ]; then
-      CACHE_DIR=".apps-cache/${SELECTED_APP}"
-      if [ ! -d "${CACHE_DIR}" ]; then
-        echo "Cloning ${SELECTED_APP} from ${APP_URL}..."
-        git clone "${APP_URL}" "${CACHE_DIR}"
-      fi
-    fi
-  fi
-
-  # --------------------------------------------------
-  # Ensure selected app dependencies installed (if needed)
-  # --------------------------------------------------
-
-  APP_DIR=""
-  if [ -d "apps/${SELECTED_APP}" ]; then
-    APP_DIR="apps/${SELECTED_APP}"
-  elif [ -d ".apps-cache/${SELECTED_APP}" ]; then
-    APP_DIR=".apps-cache/${SELECTED_APP}"
-  fi
-
-  if [ -n "${APP_DIR}" ] && [ -f "${APP_DIR}/package.json" ] && [ ! -d "${APP_DIR}/node_modules" ]; then
-    echo "Installing dependencies for ${APP_DIR}..."
-    npm --prefix "${APP_DIR}" install
-  fi
+  clone_selected_registry_app_if_needed "${SELECTED_APP}"
+  APP_DIR="$(resolve_selected_app_dir "${SELECTED_APP}")"
+  prepare_selected_app_dir "${APP_DIR}" "${SELECTED_APP}"
 fi
 
 VITE_APP_NAME="${SELECTED_APP}" APP_NAME="${SELECTED_APP}" APP_PATH="${RESOLVED_APP_PATH}" npx vite --host "${VITE_HOST}" --port "${PORT}" &

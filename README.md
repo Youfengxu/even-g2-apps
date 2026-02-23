@@ -1,4 +1,4 @@
-# Unified Even Hub Simulator v0.0.5
+# Unified Even Hub Simulator v0.0.6
 
 Multi-application development environment for building and testing Even G2 apps with the Even Hub Simulator.
 
@@ -102,16 +102,26 @@ Update one registry app only:
 
 If a cached app has local changes (for example `package-lock.json` edits), the updater auto-stashes those changes before pull and prints the stash name.
 
+### Update even-dev launcher dependencies
+
+Refresh the root launcher environment (`start-even.sh`, root Vite, `vite-plugins/*`):
+
+```bash
+./start-even.sh --devenv-update
+```
+
+Standalone apps under `apps/*` keep their own dependencies in `apps/<app>/package.json`.
+
 ### Select an app directly
 
 ```bash
-APP_NAME=demo ./start-even.sh
+APP_NAME=timer ./start-even.sh
 ```
 
 Or as a positional argument:
 
 ```bash
-./start-even.sh demo
+./start-even.sh timer
 ```
 
 ### Run a local app by path
@@ -154,7 +164,9 @@ There are two kinds of apps:
 
 ### Built-in apps (`apps/`)
 
-Small apps that live directly in the `apps/` directory (demo, clock, timer, quicktest, restapi). They share the even-dev `index.html` and `src/main.ts` loader, and export an `AppModule` interface from `apps/<name>/index.ts`.
+Apps under `apps/` are standalone web apps with their own `index.html`, `package.json`, and `src/main.*` entrypoint (they may share helpers from `apps/_shared`).
+
+The launcher (`start-even.sh`) treats built-in apps as standalone-only and passes the selected app directory through `APP_PATH`.
 
 ### External apps
 
@@ -245,15 +257,38 @@ Metadata file used by `evenhub-cli` for packaging and deployment:
 ```json
 {
   "package_id": "com.example.myapp",
+  "edition": "202601",
   "name": "my-app",
   "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Short one-line summary for the app",
   "description": "What my app does",
   "author": "Your Name",
   "entrypoint": "index.html"
 }
 ```
 
+`evenhub-cli pack` validates this schema. `package_id` must be a valid lowercase dot-separated package name (for example `com.example.myapp`).
+
 See the [reddit app's app.json](https://github.com/fuutott/rdt-even-g2-rddit-client) for a full example with permissions.
+
+### Packaging (`evenhub-cli`)
+
+For built-in standalone apps under `apps/*`, use the helper script:
+
+```bash
+./scripts/pack-app.sh timer
+```
+
+This will build the app, then run `evenhub-cli pack app.json dist`, and produce `apps/timer/out.ehpk`.
+
+Manual equivalent:
+
+```bash
+cd apps/timer
+npm run build
+npx @evenrealities/evenhub-cli pack app.json dist
+```
 
 ### Connecting to the Even bridge
 
@@ -303,9 +338,9 @@ Use this flow when you build UI in `misc/editor` and want to test it quickly in 
 1. Ensure submodules are initialized once: `git submodule update --init --recursive`
 2. Start the editor helper app: `./misc/editor.sh`
 3. In the editor UI, generate TypeScript source.
-4. Either paste that source into the quicktest textarea, or replace `apps/quicktest/generated-ui.ts`.
+4. Either paste that source into the quicktest textarea, or replace `apps/quicktest/src/generated-ui.ts`.
 5. Start quicktest: `APP_NAME=quicktest ./start-even.sh`
-6. In quicktest, click **Render Quicktest UI**.
+6. In quicktest, click **Connect glasses** (auto-renders on connect), then use **Render Page** for rerenders.
 
 Quicktest expectations for generated source:
 - Source should define `const container = new CreateStartUpPageContainer(...)`.
@@ -319,13 +354,14 @@ Quicktest expectations for generated source:
 ```
 apps.json           -> External app registry (git URLs or local paths)
 start-even.sh       -> CLI launcher: app selection, deps, Vite, simulator
-index.html          -> Entry point for built-in apps
-src/main.ts         -> Built-in app loader (AppModule discovery)
-apps/               -> Built-in apps (demo, clock, timer, quicktest, restapi)
-apps/_shared/       -> Shared types (AppModule contract)
-vite-plugins/       -> Custom Vite plugins for external apps
+index.html          -> Fallback launcher shell (used when no standalone app HTML is selected)
+src/main.ts         -> Fallback launcher page script (standalone-only guidance)
+apps/               -> Standalone built-in apps (each has its own index.html + src/main.ts)
+apps/_shared/       -> Shared helpers for standalone apps (dev/test/runtime utilities)
+scripts/            -> Helper scripts (for example pack-app.sh)
+vite-plugins/       -> Custom Vite plugins for root dev server / registry apps
 .apps-cache/        -> Auto-cloned external app repositories (gitignored)
-vite.config.ts      -> Vite config (aliases, fs.allow, external app HTML serving)
+vite.config.ts      -> Root Vite config (serves selected standalone app HTML, fs.allow, plugins)
 ```
 
 ---
@@ -334,21 +370,20 @@ vite.config.ts      -> Vite config (aliases, fs.allow, external app HTML serving
 
 ```mermaid
 flowchart TD
-  A["start-even.sh"] --> B["Vite dev server (APP_NAME)"]
+  A["start-even.sh"] --> B["Vite dev server (APP_NAME + APP_PATH)"]
 
-  B --> C["Built-in app?"]
-  C -- Yes --> D["index.html + src/main.ts"]
-  D --> E["apps/<app>/index.ts (AppModule)"]
+  B --> C["Standalone app selected?"]
+  C -- Yes --> D["Selected app's own index.html"]
+  D --> E["Selected app's src/main.ts"]
 
-  C -- No --> F["External app's own index.html"]
-  F --> G["External app's src/main.ts"]
+  C -- No --> F["Fallback root index.html + src/main.ts"]
 
   E --> H["Even Hub SDK / bridge"]
-  G --> H
+  F --> I["Launcher/help UI only"]
 
-  H <--> I["Even Hub Simulator"]
+  H <--> J["Even Hub Simulator"]
 
-  J["vite-plugins/"] --> B
+  K["vite-plugins/"] --> B
 ```
 
 ---

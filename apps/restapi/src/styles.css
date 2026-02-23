@@ -1,0 +1,30 @@
+@import "../node_modules/@jappyjan/even-realities-ui/dist/even-realities-ui.css";
+@import "../../_shared/styles.css";
+
+body {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+#event-log { min-height: 120px; max-height: 220px; overflow: auto; }
+
+/* Rest API helper UI mounts dynamically into #app with inline styles. */
+#restapi-controls {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+@media (min-width: 520px) {
+  .actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "package_id": "com.bnm.evendev.timer",
+  "edition": "202601",
+  "name": "Timer",
+  "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Countdown timer with presets for Even G2.",
+  "description": "Countdown timer for Even G2 with selectable presets",
+  "author": "even-dev",
+  "entrypoint": "index.html"
+}

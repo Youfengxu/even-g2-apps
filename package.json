@@ -13,22 +13,6 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "dependencies": {
-    "@evenrealities/even_hub_sdk": "^0.0.7",
-    "@jappyjan/even-better-sdk": "^0.0.8",
-    "@jappyjan/even-realities-ui": "^0.0.8",
-    "@motis-project/motis-client": "^2.8.3",
-    "hyphenation.de": "^0.2.1",
-    "hyphenation.en-us": "^0.2.1",
-    "hyphenation.ru": "^0.2.1",
-    "hyphenation.uk": "^0.2.1",
-    "hypher": "^0.2.5",
-    "jszip": "^3.10.1",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
-  },
   "devDependencies": {
     "vite": "^7.3.1"
   }

@@ -1,0 +1,11 @@
+{
+  "package_id": "com.bnm.evendev.clock",
+  "edition": "202601",
+  "name": "Clock",
+  "version": "0.1.0",
+  "min_app_version": "0.1.0",
+  "tagline": "Minimal clock display for Even G2 glasses.",
+  "description": "Standalone clock app for Even G2",
+  "author": "even-dev",
+  "entrypoint": "index.html"
+}
