@@ -1,7 +1,13 @@
 import { EvenBetterSdk } from '@jappyjan/even-better-sdk'
 import { OsEventTypeList } from '@evenrealities/even_hub_sdk'
-import type { AppActions, SetStatus } from '../_shared/app-types'
-import { appendEventLog } from '../_shared/log'
+import { appendEventLog } from '../../_shared/log'
+
+type SetStatus = (text: string) => void
+
+export type AppActions = {
+  connect: () => Promise<void>
+  action: () => Promise<void>
+}
 
 type PhoneNotification = {
   app: string
@@ -195,7 +201,7 @@ function startSSE(setStatus: SetStatus): void {
 // Browser UI — allowed apps panel
 // ---------------------------------------------------------------------------
 
-function ensureNotifBrowserUi(): void {
+export function ensureNotifBrowserUi(): void {
   if (document.getElementById('notif-config-panel')) return
 
   const appRoot = document.getElementById('app')
