@@ -6,6 +6,7 @@ import chessStockfish from './chess-stockfish'
 import gutenbergProxy from './gutenberg-proxy'
 import redditProxy from './reddit-proxy'
 import restapiProxy from './restapi-proxy'
+import notifServer from './notif-server'
 
 export function loadAppPlugins(ctx: PluginContext): Plugin[] {
   return [
@@ -15,5 +16,6 @@ export function loadAppPlugins(ctx: PluginContext): Plugin[] {
     gutenbergProxy(),
     redditProxy(),
     restapiProxy(),
+    notifServer(),
   ].filter((p): p is Plugin => p !== null)
 }
