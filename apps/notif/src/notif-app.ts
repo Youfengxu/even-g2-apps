@@ -28,6 +28,15 @@ let notifClient: NotifClient | null = null
 let sseSource: EventSource | null = null
 let pendingNotif: PhoneNotification | null = null
 let isDisplaying = false
+let reconnectCallback: (() => void) | null = null
+let lastReconnectAt = 0
+
+function scheduleReconnect(): void {
+  const now = Date.now()
+  if (now - lastReconnectAt < 5000) return // debounce: at most once per 5s
+  lastReconnectAt = now
+  setTimeout(() => reconnectCallback?.(), 3000)
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -164,6 +173,13 @@ function getBridgeNotifClient(): NotifClient {
         void notifClient.showNotif(pendingNotif)
       }
     }
+
+    if (rawType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
+      notifClient = null
+      isDisplaying = false
+      appendEventLog('Notif: bridge disconnected — reconnecting in 3s...')
+      scheduleReconnect()
+    }
   })
 
   return {
@@ -250,6 +266,7 @@ function startSSE(setStatus: SetStatus): void {
   sseSource.onerror = () => {
     appendEventLog('Notif: SSE stream error — retrying...')
     setStatus('Notif: stream disconnected — retrying...')
+    scheduleReconnect()
   }
 }
 
@@ -408,31 +425,38 @@ export function ensureNotifBrowserUi(): void {
 export function createNotifActions(setStatus: SetStatus): AppActions {
   ensureNotifBrowserUi()
 
-  return {
-    async connect() {
-      setStatus('Notif: connecting to Even bridge...')
-      appendEventLog('Notif: connect requested')
+  async function connect(): Promise<void> {
+    setStatus('Notif: connecting to Even bridge...')
+    appendEventLog('Notif: connect requested')
 
-      try {
-        const { client } = await initNotif()
-        notifClient = client
+    try {
+      const { client } = await initNotif()
+      notifClient = client
 
-        await client.start()
+      await client.start()
 
-        if (client.mode === 'bridge') {
-          startSSE(setStatus)
-          setStatus('Notif: connected. Double-tap glasses to view notifications.')
-          appendEventLog('Notif: bridge connected')
-        } else {
-          setStatus('Notif: error — Even bridge not found. Open this app via the Even App.')
-          appendEventLog('Notif: bridge not found')
-        }
-      } catch (err) {
-        console.error(err)
-        setStatus('Notif: connection failed')
-        appendEventLog('Notif: connection failed')
+      if (client.mode === 'bridge') {
+        startSSE(setStatus)
+        setStatus('Notif: connected. Double-tap glasses to view notifications.')
+        appendEventLog('Notif: bridge connected')
+      } else {
+        setStatus('Notif: error — Even bridge not found. Open this app via the Even App.')
+        appendEventLog('Notif: bridge not found')
       }
-    },
+    } catch (err) {
+      console.error(err)
+      setStatus('Notif: connection failed')
+      appendEventLog('Notif: connection failed')
+    }
+  }
+
+  reconnectCallback = () => {
+    appendEventLog('Notif: auto-reconnecting...')
+    void connect()
+  }
+
+  return {
+    connect,
 
     async action() {
       if (!notifClient || notifClient.mode !== 'bridge') {

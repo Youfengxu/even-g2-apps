@@ -50,6 +50,9 @@ connectBtn.addEventListener('click', () => {
   void actions.connect()
 })
 
+// Auto-connect when the page loads (e.g. after Even App reconnects)
+void actions.connect()
+
 testBtn.addEventListener('click', () => {
   void actions.action()
 })
