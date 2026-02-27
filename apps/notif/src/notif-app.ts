@@ -76,6 +76,21 @@ function formatForGlasses(n: PhoneNotification): string {
   return lines.join('\n')
 }
 
+function formatDateTime(): string {
+  const now = new Date()
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const day = days[now.getDay()]!
+  const month = months[now.getMonth()]!
+  const date = now.getDate()
+  const year = now.getFullYear()
+  const hours = now.getHours()
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  const h12 = hours % 12 || 12
+  return `${day} ${month} ${date} ${year}  ${h12}:${minutes} ${ampm}`
+}
+
 // ---------------------------------------------------------------------------
 // Notif client — mock (no glasses)
 // ---------------------------------------------------------------------------
@@ -97,11 +112,40 @@ function getBridgeNotifClient(): NotifClient {
   const sdk = new EvenBetterSdk()
   const page = sdk.createPage('hub-notif-page')
 
-  const display = page.addTextElement(' ')
-  display
+  // Top row: date and time (full width)
+  const clockDisplay = page.addTextElement(' ')
+  clockDisplay
     .setPosition((p) => p.setX(0).setY(0))
-    .setSize((s) => s.setWidth(576).setHeight(288))
+    .setSize((s) => s.setWidth(576).setHeight(40))
+
+  // Left column: notification text — receives input events
+  const notifDisplay = page.addTextElement(' ')
+  notifDisplay
+    .setPosition((p) => p.setX(0).setY(40))
+    .setSize((s) => s.setWidth(288).setHeight(248))
     .markAsEventCaptureElement()
+
+  // Right column is left as empty canvas (no container needed)
+
+  let clockTimer: ReturnType<typeof setInterval> | null = null
+  let clockUpdating = false
+
+  function startClock(): void {
+    if (clockTimer) return
+    clockTimer = setInterval(() => {
+      if (clockUpdating) return
+      clockUpdating = true
+      clockDisplay.setContent(formatDateTime())
+      void clockDisplay.updateWithEvenHubSdk().finally(() => { clockUpdating = false })
+    }, 1000)
+  }
+
+  function stopClock(): void {
+    if (clockTimer) {
+      clearInterval(clockTimer)
+      clockTimer = null
+    }
+  }
 
   // Double-tap: toggle between showing pending notification and blank
   sdk.addEventListener((event) => {
@@ -128,14 +172,26 @@ function getBridgeNotifClient(): NotifClient {
       await page.render()
     },
     async showNotif(n) {
-      display.setContent(formatForGlasses(n))
-      const updated = await display.updateWithEvenHubSdk()
-      if (!updated) await page.render()
+      clockDisplay.setContent(formatDateTime())
+      notifDisplay.setContent(formatForGlasses(n))
+      const updated = await notifDisplay.updateWithEvenHubSdk()
+      if (!updated) {
+        await page.render()
+      } else {
+        await clockDisplay.updateWithEvenHubSdk()
+      }
+      startClock()
     },
     async showBlank() {
-      display.setContent(' ')
-      const updated = await display.updateWithEvenHubSdk()
-      if (!updated) await page.render()
+      stopClock()
+      clockDisplay.setContent(' ')
+      notifDisplay.setContent(' ')
+      const updated = await notifDisplay.updateWithEvenHubSdk()
+      if (!updated) {
+        await page.render()
+      } else {
+        await clockDisplay.updateWithEvenHubSdk()
+      }
     },
   }
 }
