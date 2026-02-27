@@ -2,7 +2,7 @@
   "package_id": "com.youfengxu.notif",
   "edition": "202601",
   "name": "Notif",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "min_app_version": "0.1.0",
   "tagline": "Forward phone notifications to your G2 glasses.",
   "description": "Receive Android phone notifications on the Even G2 glasses display. Double-tap to view, double-tap again to dismiss.",
