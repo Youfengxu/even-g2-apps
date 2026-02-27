@@ -174,6 +174,19 @@ function getBridgeNotifClient(): NotifClient {
       }
     }
 
+    if (rawType === OsEventTypeList.FOREGROUND_EXIT_EVENT) {
+      stopClock()
+    }
+
+    if (rawType === OsEventTypeList.FOREGROUND_ENTER_EVENT && notifClient) {
+      // Re-establish page containers, then restore whatever was showing
+      void notifClient.start().then(() => {
+        if (isDisplaying && pendingNotif && notifClient) {
+          void notifClient.showNotif(pendingNotif)
+        }
+      })
+    }
+
     if (rawType === OsEventTypeList.ABNORMAL_EXIT_EVENT) {
       notifClient = null
       isDisplaying = false
