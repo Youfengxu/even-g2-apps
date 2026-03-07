@@ -1,15 +1,47 @@
-import { browserOptionLabel, TAG_ALL, type RestCommand } from './model'
+import { displayName, TAG_ALL, type RestCommand } from './model'
 
 export type RestUiState = {
   root: HTMLDivElement
-  select: HTMLSelectElement
+  commandTableBody: HTMLTableSectionElement
   response: HTMLPreElement
   urlInput: HTMLInputElement
   nameInput: HTMLInputElement
   tagsInput: HTMLInputElement
+  tagsDatalist: HTMLDataListElement
   addButton: HTMLButtonElement
-  removeButton: HTMLButtonElement
-  tagFilterSelect: HTMLSelectElement
+  tagFilterGroup: HTMLDivElement
+  exportButton: HTMLButtonElement
+  importFileInput: HTMLInputElement
+  importButton: HTMLButtonElement
+}
+
+function parseDatasetCommandId(value: string | undefined): number | null {
+  const parsed = Number.parseInt(value ?? '', 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function applyRowMarkers(ui: RestUiState): void {
+  const selectedId = getSelectedCommandId(ui)
+  const glassSelectedId = getGlassSelectedCommandId(ui)
+
+  const rows = ui.commandTableBody.querySelectorAll<HTMLTableRowElement>('tr[data-command-id]')
+  for (const row of rows) {
+    const rowCommandId = parseDatasetCommandId(row.dataset.commandId)
+    const isSelected = selectedId !== null && rowCommandId === selectedId
+    const isGlassSelected = glassSelectedId !== null && rowCommandId === glassSelectedId
+
+    row.classList.toggle('restapi-command-row-selected', isSelected)
+    row.classList.toggle('restapi-command-row-glass-selected', isGlassSelected)
+  }
+}
+
+function setSelectedCommandId(ui: RestUiState, commandId: number | null): void {
+  if (commandId === null) {
+    delete ui.root.dataset.selectedCommandId
+  } else {
+    ui.root.dataset.selectedCommandId = String(commandId)
+  }
+  applyRowMarkers(ui)
 }
 
 export function ensureUi(): RestUiState {
@@ -22,14 +54,17 @@ export function ensureUi(): RestUiState {
   if (existing) {
     return {
       root: existing,
-      select: existing.querySelector('#restapi-command-select') as HTMLSelectElement,
+      commandTableBody: existing.querySelector('#restapi-command-table-body') as HTMLTableSectionElement,
       response: existing.querySelector('#restapi-response') as HTMLPreElement,
       urlInput: existing.querySelector('#restapi-url-input') as HTMLInputElement,
       nameInput: existing.querySelector('#restapi-name-input') as HTMLInputElement,
       tagsInput: existing.querySelector('#restapi-tags-input') as HTMLInputElement,
+      tagsDatalist: existing.querySelector('#restapi-tags-suggestions') as HTMLDataListElement,
       addButton: existing.querySelector('#restapi-command-add') as HTMLButtonElement,
-      removeButton: existing.querySelector('#restapi-command-remove') as HTMLButtonElement,
-      tagFilterSelect: existing.querySelector('#restapi-tag-filter') as HTMLSelectElement,
+      tagFilterGroup: existing.querySelector('#restapi-tag-filter-group') as HTMLDivElement,
+      exportButton: existing.querySelector('#restapi-export-button') as HTMLButtonElement,
+      importFileInput: existing.querySelector('#restapi-import-file-input') as HTMLInputElement,
+      importButton: existing.querySelector('#restapi-import-button') as HTMLButtonElement,
     }
   }
 
@@ -37,22 +72,32 @@ export function ensureUi(): RestUiState {
   controls.id = 'restapi-controls'
   controls.style.marginTop = '12px'
 
-  const commandRow = document.createElement('div')
-  commandRow.style.display = 'flex'
-  commandRow.style.gap = '8px'
-  commandRow.style.flexWrap = 'wrap'
-  commandRow.style.alignItems = 'center'
+  const commandSection = document.createElement('div')
+  commandSection.id = 'restapi-command-section'
 
-  const select = document.createElement('select')
-  select.id = 'restapi-command-select'
-  select.style.minWidth = '360px'
+  const commandSectionTitle = document.createElement('p')
+  commandSectionTitle.id = 'restapi-command-title'
+  commandSectionTitle.textContent = 'REST commands'
+  commandSectionTitle.style.margin = '0 0 6px 0'
 
-  const removeButton = document.createElement('button')
-  removeButton.id = 'restapi-command-remove'
-  removeButton.type = 'button'
-  removeButton.textContent = 'Remove Selected'
+  const commandTableWrap = document.createElement('div')
+  commandTableWrap.id = 'restapi-command-table-wrap'
+
+  const commandTable = document.createElement('table')
+  commandTable.id = 'restapi-command-table'
+
+  const commandHead = document.createElement('thead')
+  commandHead.innerHTML = '<tr><th>Name</th><th>Tags</th><th>URL</th><th>Remove</th></tr>'
+
+  const commandTableBody = document.createElement('tbody')
+  commandTableBody.id = 'restapi-command-table-body'
+
+  commandTable.append(commandHead, commandTableBody)
+  commandTableWrap.append(commandTable)
+  commandSection.append(commandSectionTitle, commandTableWrap)
 
   const filterRow = document.createElement('div')
+  filterRow.id = 'restapi-filter-row'
   filterRow.style.display = 'flex'
   filterRow.style.gap = '8px'
   filterRow.style.flexWrap = 'wrap'
@@ -62,16 +107,25 @@ export function ensureUi(): RestUiState {
   const tagFilterLabel = document.createElement('span')
   tagFilterLabel.textContent = 'Glasses tag filter:'
 
-  const tagFilterSelect = document.createElement('select')
-  tagFilterSelect.id = 'restapi-tag-filter'
-  tagFilterSelect.style.minWidth = '200px'
+  const tagFilterGroup = document.createElement('div')
+  tagFilterGroup.id = 'restapi-tag-filter-group'
 
   const inputRow = document.createElement('div')
+  inputRow.id = 'restapi-add-input-row'
   inputRow.style.display = 'flex'
   inputRow.style.gap = '8px'
   inputRow.style.flexWrap = 'wrap'
   inputRow.style.alignItems = 'center'
-  inputRow.style.marginTop = '8px'
+  inputRow.style.marginTop = '6px'
+
+  const addSection = document.createElement('div')
+  addSection.id = 'restapi-add-command-section'
+  addSection.style.marginTop = '10px'
+
+  const addSectionTitle = document.createElement('p')
+  addSectionTitle.id = 'restapi-add-command-title'
+  addSectionTitle.textContent = 'Add new REST command'
+  addSectionTitle.style.margin = '0'
 
   const urlInput = document.createElement('input')
   urlInput.id = 'restapi-url-input'
@@ -90,11 +144,33 @@ export function ensureUi(): RestUiState {
   tagsInput.type = 'text'
   tagsInput.placeholder = 'Tags (optional, comma-separated)'
   tagsInput.style.minWidth = '220px'
+  tagsInput.setAttribute('list', 'restapi-tags-suggestions')
+
+  const tagsDatalist = document.createElement('datalist')
+  tagsDatalist.id = 'restapi-tags-suggestions'
 
   const addButton = document.createElement('button')
   addButton.id = 'restapi-command-add'
   addButton.type = 'button'
   addButton.textContent = 'Add Command'
+
+  const importExportSection = document.createElement('div')
+  importExportSection.id = 'restapi-import-export-section'
+
+  const exportButton = document.createElement('button')
+  exportButton.id = 'restapi-export-button'
+  exportButton.type = 'button'
+  exportButton.textContent = '⬇️ Export'
+
+  const importFileInput = document.createElement('input')
+  importFileInput.id = 'restapi-import-file-input'
+  importFileInput.type = 'file'
+  importFileInput.accept = '.json,application/json'
+
+  const importButton = document.createElement('button')
+  importButton.id = 'restapi-import-button'
+  importButton.type = 'button'
+  importButton.textContent = '⬆️ Import'
 
   const response = document.createElement('pre')
   response.id = 'restapi-response'
@@ -106,31 +182,48 @@ export function ensureUi(): RestUiState {
   response.style.padding = '8px'
   response.textContent = 'Response output will appear here.'
 
-  commandRow.append(select, removeButton)
-  filterRow.append(tagFilterLabel, tagFilterSelect)
-  inputRow.append(urlInput, nameInput, tagsInput, addButton)
-  controls.append(commandRow, filterRow, inputRow, response)
+  filterRow.append(tagFilterLabel, tagFilterGroup)
+  inputRow.append(nameInput, tagsInput, urlInput, addButton)
+  addSection.append(addSectionTitle, inputRow)
+  importExportSection.append(exportButton, importFileInput, importButton)
+  controls.append(commandSection, filterRow, addSection, importExportSection, tagsDatalist, response)
   appRoot.append(controls)
 
   return {
     root: controls,
-    select,
+    commandTableBody,
     response,
     urlInput,
     nameInput,
     tagsInput,
+    tagsDatalist,
     addButton,
-    removeButton,
-    tagFilterSelect,
+    tagFilterGroup,
+    exportButton,
+    importFileInput,
+    importButton,
   }
 }
 
-export function getSelectedCommandId(select: HTMLSelectElement): number | null {
-  const parsed = Number.parseInt(select.value, 10)
-  if (!Number.isFinite(parsed)) {
-    return null
+export function getSelectedCommandId(ui: RestUiState): number | null {
+  return parseDatasetCommandId(ui.root.dataset.selectedCommandId)
+}
+
+export function getGlassSelectedCommandId(ui: RestUiState): number | null {
+  return parseDatasetCommandId(ui.root.dataset.glassSelectedCommandId)
+}
+
+export function syncSelectedCommandById(ui: RestUiState, commandId: number): void {
+  setSelectedCommandId(ui, commandId)
+}
+
+export function syncGlassSelectedCommandById(ui: RestUiState, commandId: number | null): void {
+  if (commandId === null) {
+    delete ui.root.dataset.glassSelectedCommandId
+  } else {
+    ui.root.dataset.glassSelectedCommandId = String(commandId)
   }
-  return parsed
+  applyRowMarkers(ui)
 }
 
 export function readCommandInput(ui: RestUiState): { url: string; name: string; tagsInput: string } {
@@ -147,60 +240,114 @@ export function clearCommandInput(ui: RestUiState): void {
   ui.tagsInput.value = ''
 }
 
-export function rebuildCommandSelect(
-  select: HTMLSelectElement,
-  commands: RestCommand[],
-  selectedCommandId?: number,
-): void {
-  const currentId = selectedCommandId ?? getSelectedCommandId(select)
-  select.innerHTML = ''
-
-  for (const command of commands) {
-    const option = document.createElement('option')
-    option.value = String(command.id)
-    option.textContent = browserOptionLabel(command)
-    select.append(option)
-  }
-
-  if (select.options.length === 0) {
-    return
-  }
-
-  const index = currentId ? commands.findIndex((command) => command.id === currentId) : 0
-  select.selectedIndex = index >= 0 ? index : 0
-}
-
-export function rebuildTagFilterSelect(
-  select: HTMLSelectElement,
-  tags: string[],
-  activeTag: string,
-): void {
-  select.innerHTML = ''
-
-  const allOption = document.createElement('option')
-  allOption.value = TAG_ALL
-  allOption.textContent = 'All tags'
-  select.append(allOption)
-
+export function rebuildTagsAutocomplete(ui: RestUiState, tags: string[]): void {
+  ui.tagsDatalist.innerHTML = ''
   for (const tag of tags) {
     const option = document.createElement('option')
     option.value = tag
-    option.textContent = `#${tag}`
-    select.append(option)
-  }
-
-  const exists = Array.from(select.options).some((option) => option.value === activeTag)
-  select.value = exists ? activeTag : TAG_ALL
-}
-
-export function syncSelectByCommandId(select: HTMLSelectElement, commandId: number): void {
-  const idx = Array.from(select.options).findIndex((option) => Number.parseInt(option.value, 10) === commandId)
-  if (idx >= 0) {
-    select.selectedIndex = idx
+    ui.tagsDatalist.append(option)
   }
 }
 
-export function syncTagFilter(select: HTMLSelectElement, tagFilter: string): void {
-  const exists = Array.from(select.options).some((option) => option.value === tagFilter)
-  select.value = exists ? tagFilter : TAG_ALL
+export function rebuildCommandTable(
+  ui: RestUiState,
+  commands: RestCommand[],
+  selectedCommandId?: number,
+): void {
+  const currentId = selectedCommandId ?? getSelectedCommandId(ui)
+  ui.commandTableBody.innerHTML = ''
+
+  if (commands.length === 0) {
+    setSelectedCommandId(ui, null)
+
+    const emptyRow = document.createElement('tr')
+    const emptyCell = document.createElement('td')
+    emptyCell.colSpan = 4
+    emptyCell.textContent = 'No commands configured.'
+    emptyCell.className = 'restapi-command-empty'
+    emptyRow.append(emptyCell)
+    ui.commandTableBody.append(emptyRow)
+    return
+  }
+
+  const resolvedSelectedId = currentId && commands.some((command) => command.id === currentId)
+    ? currentId
+    : commands[0]?.id ?? null
+  setSelectedCommandId(ui, resolvedSelectedId)
+
+  for (const command of commands) {
+    const row = document.createElement('tr')
+    row.dataset.commandId = String(command.id)
+    row.dataset.selectCommandId = String(command.id)
+
+    const nameCell = document.createElement('td')
+    nameCell.textContent = displayName(command)
+
+    const tagsCell = document.createElement('td')
+    tagsCell.textContent = command.tags.length > 0 ? command.tags.map((tag) => `#${tag}`).join(', ') : '-'
+
+    const urlCell = document.createElement('td')
+    urlCell.textContent = command.url
+
+    const removeCell = document.createElement('td')
+    const removeButton = document.createElement('button')
+    removeButton.type = 'button'
+    removeButton.className = 'restapi-row-remove'
+    removeButton.dataset.removeCommandId = String(command.id)
+    removeButton.textContent = 'Remove'
+    removeCell.append(removeButton)
+
+    row.append(nameCell, tagsCell, urlCell, removeCell)
+    ui.commandTableBody.append(row)
+  }
+
+  applyRowMarkers(ui)
+}
+
+export function getActiveTagFilter(ui: RestUiState): string {
+  return ui.root.dataset.activeTagFilter ?? TAG_ALL
+}
+
+function applyTagFilterButtonState(group: HTMLDivElement, activeTag: string): void {
+  const buttons = group.querySelectorAll<HTMLButtonElement>('button[data-tag-filter]')
+  for (const button of buttons) {
+    const isActive = button.dataset.tagFilter === activeTag
+    button.classList.toggle('restapi-tag-filter-active', isActive)
+    button.setAttribute('aria-pressed', String(isActive))
+  }
+}
+
+export function rebuildTagFilterSelect(
+  ui: RestUiState,
+  tags: string[],
+  activeTag: string,
+): void {
+  ui.tagFilterGroup.innerHTML = ''
+  const available = [TAG_ALL, ...tags]
+  const resolvedActive = available.includes(activeTag) ? activeTag : TAG_ALL
+  ui.root.dataset.activeTagFilter = resolvedActive
+
+  const allButton = document.createElement('button')
+  allButton.type = 'button'
+  allButton.dataset.tagFilter = TAG_ALL
+  allButton.textContent = 'All tags'
+  ui.tagFilterGroup.append(allButton)
+
+  for (const tag of tags) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.dataset.tagFilter = tag
+    button.textContent = `#${tag}`
+    ui.tagFilterGroup.append(button)
+  }
+
+  applyTagFilterButtonState(ui.tagFilterGroup, resolvedActive)
+}
+
+export function syncTagFilter(ui: RestUiState, tagFilter: string): void {
+  const buttonExists = Array.from(ui.tagFilterGroup.querySelectorAll<HTMLButtonElement>('button[data-tag-filter]'))
+    .some((button) => button.dataset.tagFilter === tagFilter)
+  const resolvedTag = buttonExists ? tagFilter : TAG_ALL
+  ui.root.dataset.activeTagFilter = resolvedTag
+  applyTagFilterButtonState(ui.tagFilterGroup, resolvedTag)
 }

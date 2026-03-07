@@ -23,8 +23,141 @@ body {
   padding: 14px;
 }
 
+#restapi-command-title,
+#restapi-add-command-title {
+  font-weight: 600;
+}
+
+#restapi-add-command-section {
+  margin-top: 12px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+  padding: 10px;
+}
+
+#restapi-import-export-section {
+  margin-top: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface);
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+#restapi-import-file-input {
+  flex: 1 1 auto;
+  min-width: 190px;
+}
+
+#restapi-command-table-wrap {
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+#restapi-command-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+#restapi-command-table th,
+#restapi-command-table td {
+  border-bottom: 1px solid var(--app-border);
+  text-align: left;
+  vertical-align: top;
+  padding: 8px;
+}
+
+#restapi-command-table th {
+  font-size: 12px;
+}
+
+#restapi-command-table td:nth-child(3) {
+  word-break: break-all;
+}
+
+#restapi-command-table tr:last-child td {
+  border-bottom: none;
+}
+
+.restapi-command-row-selected {
+  background: rgba(94, 129, 244, 0.08);
+}
+
+.restapi-command-row-glass-selected {
+  box-shadow: inset 4px 0 0 #5e81f4;
+}
+
+.restapi-command-empty {
+  color: var(--app-text-subtle);
+}
+
+.restapi-row-remove {
+  white-space: nowrap;
+}
+
+#restapi-tag-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+#restapi-tag-filter-group button {
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+#restapi-tag-filter-group button.restapi-tag-filter-active {
+  background: rgba(94, 129, 244, 0.16);
+  border-color: #5e81f4;
+}
+
 @media (min-width: 520px) {
   .actions {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 519px) {
+  #restapi-filter-row,
+  #restapi-add-input-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  #restapi-url-input,
+  #restapi-name-input,
+  #restapi-tags-input {
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  #restapi-tag-filter-group {
+    width: 100%;
+  }
+
+  #restapi-command-add {
+    width: 100%;
+  }
+
+  #restapi-command-table {
+    min-width: 680px;
+  }
+
+  #restapi-add-command-section {
+    padding: 10px;
+  }
+
+  #restapi-import-export-section {
+    padding: 6px 8px;
   }
 }

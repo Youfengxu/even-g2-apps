@@ -95,10 +95,10 @@ function clampIndex(index: number, length: number): number {
 function buildProgressBarLine(remainingSeconds: number, totalSeconds: number): string {
   const barLength = 12
   const safeTotal = Math.max(1, totalSeconds)
-  const elapsedSeconds = Math.max(0, Math.min(safeTotal, safeTotal - remainingSeconds))
-  const filledBlocks = Math.round((elapsedSeconds / safeTotal) * barLength)
-  const emptyBlocks = Math.max(0, barLength - filledBlocks)
-  return `${'━'.repeat(filledBlocks)}${'─'.repeat(emptyBlocks)}`
+  const safeRemaining = Math.max(0, Math.min(safeTotal, remainingSeconds))
+  const boldBlocks = Math.round((safeRemaining / safeTotal) * barLength)
+  const thinBlocks = Math.max(0, barLength - boldBlocks)
+  return `${'━'.repeat(boldBlocks)}${'─'.repeat(thinBlocks)}`
 }
 
 export function createTimerController({ setStatusMessage, setPhase, log, onCountdownChange }: TimerControllerDeps) {

@@ -29,22 +29,31 @@ import {
   parseTagsInput,
   RestCommandStore,
   TAG_ALL,
-  toGlassLabel,
   type RestCommand,
+  type RestCommandSeed,
 } from './model'
 import {
   clearCommandInput,
   ensureUi,
+  getActiveTagFilter,
+  getGlassSelectedCommandId,
   getSelectedCommandId,
-  rebuildCommandSelect,
+  rebuildCommandTable,
+  rebuildTagsAutocomplete,
   rebuildTagFilterSelect,
   readCommandInput,
-  syncSelectByCommandId,
+  syncGlassSelectedCommandById,
+  syncSelectedCommandById,
   syncTagFilter,
   type RestUiState,
 } from './ui'
 
 const PROXY_PATH = '/__restapi_proxy'
+const TAG_LIST_CONTAINER_ID = 3
+const COMMAND_LIST_CONTAINER_ID = 4
+const COMMANDS_STORAGE_KEY = 'even.restapi.commands.v1'
+
+type GlassListFocus = 'tags' | 'commands'
 
 type BridgeDisplay = {
   mode: 'bridge' | 'mock'
@@ -53,13 +62,48 @@ type BridgeDisplay = {
   onSelectAndRun: (runner: (command: RestCommand) => Promise<void>) => void
 }
 
+type ImportableCommand = {
+  url: string
+  name: string
+  tags: string[]
+}
+
+type ImportEntry = {
+  url: string
+  name: string
+  tags: string[]
+}
+
 const store = new RestCommandStore()
+
+function loadPersistedCommands(): RestCommandSeed[] | null {
+  try {
+    const raw = window.localStorage.getItem(COMMANDS_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+
+    return parseImportEntries(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
+function persistCommands(): void {
+  try {
+    window.localStorage.setItem(COMMANDS_STORAGE_KEY, JSON.stringify(store.exportSeeds()))
+  } catch {
+    // Ignore storage failures.
+  }
+}
 
 const bridgeState: {
   bridge: EvenAppBridge | null
   startupRendered: boolean
   eventLoopRegistered: boolean
   selectedIndex: number
+  tagSelectedIndex: number
+  activeListFocus: GlassListFocus
   statusMessage: string
   activeTagFilter: string
   onSelectAndRun: ((command: RestCommand) => Promise<void>) | null
@@ -68,6 +112,8 @@ const bridgeState: {
   startupRendered: false,
   eventLoopRegistered: false,
   selectedIndex: 0,
+  tagSelectedIndex: 0,
+  activeListFocus: 'commands',
   statusMessage: 'Select command and click',
   activeTagFilter: TAG_ALL,
   onSelectAndRun: null,
@@ -80,9 +126,49 @@ function getFilteredCommands(): RestCommand[] {
   return store.filtered(bridgeState.activeTagFilter)
 }
 
+function getTagFiltersForGlass(): string[] {
+  return [TAG_ALL, ...store.availableTags()]
+}
+
+function toGlassTagLabel(tagFilter: string): string {
+  return tagFilter === TAG_ALL ? 'All tags' : `#${tagFilter}`
+}
+
+function toGlassCommandLabel(command: RestCommand): string {
+  const base = displayName(command)
+  let hostSuffix = '#unknown'
+
+  try {
+    const host = new URL(command.url).hostname
+    if (host) {
+      const trimmedHost = host.replace(/\.[^.]+$/, '')
+      hostSuffix = `#${trimmedHost || host}`
+    }
+  } catch {
+    // Keep fallback when URL is not parseable.
+  }
+
+  const text = `${base} ${hostSuffix}`
+  return text.length <= 62 ? text : `${text.slice(0, 59)}...`
+}
+
+function buildTagListLabels(tagFilters: string[], selectedIndex: number): string[] {
+  return tagFilters.map((tagFilter, idx) => {
+    const base = toGlassTagLabel(tagFilter)
+    return idx === selectedIndex ? `> ${base}` : `  ${base}`
+  })
+}
+
+function syncTagSelectionIndexFromFilter(): void {
+  const tags = getTagFiltersForGlass()
+  const idx = tags.indexOf(bridgeState.activeTagFilter)
+  bridgeState.tagSelectedIndex = idx >= 0 ? idx : 0
+}
+
 function buildFilterStatus(): string {
   const filtered = getFilteredCommands()
-  return `Filter: ${getTagFilterLabel(bridgeState.activeTagFilter)} | ${filtered.length} cmd(s)`
+  const focus = bridgeState.activeListFocus === 'tags' ? 'tags' : 'commands'
+  return `Focus: ${focus} | Filter: ${getTagFilterLabel(bridgeState.activeTagFilter)} | ${filtered.length} cmd(s)`
 }
 
 function parseIncomingSelection(
@@ -91,8 +177,9 @@ function parseIncomingSelection(
 ): { index: number; hasExplicitIndex: boolean } {
   const incomingIndexRaw = event.listEvent?.currentSelectItemIndex
   const incomingName = event.listEvent?.currentSelectItemName
+  const normalizeLabel = (value: string): string => value.trim().toLowerCase()
   const incomingIndexByName = typeof incomingName === 'string'
-    ? labels.indexOf(incomingName)
+    ? labels.findIndex((label) => normalizeLabel(label) === normalizeLabel(incomingName))
     : -1
 
   const parsedIncomingIndex = typeof incomingIndexRaw === 'number'
@@ -113,14 +200,31 @@ function syncBrowserSelectionByCommandId(commandId: number): void {
   if (!activeUi) {
     return
   }
-  syncSelectByCommandId(activeUi.select, commandId)
+  syncSelectedCommandById(activeUi, commandId)
+}
+
+function syncBrowserGlassSelectionByCommandId(commandId: number | null): void {
+  if (!activeUi) {
+    return
+  }
+  syncGlassSelectedCommandById(activeUi, commandId)
+}
+
+function currentGlassSelectedCommandId(): number | null {
+  const filtered = getFilteredCommands()
+  if (filtered.length === 0) {
+    return null
+  }
+
+  const safeIndex = clampIndex(bridgeState.selectedIndex, filtered.length)
+  return filtered[safeIndex]?.id ?? null
 }
 
 function syncBrowserTagFilter(tagFilter: string): void {
   if (!activeUi) {
     return
   }
-  syncTagFilter(activeUi.tagFilterSelect, tagFilter)
+  syncTagFilter(activeUi, tagFilter)
 }
 
 function selectedCommandFromUi(): RestCommand | null {
@@ -128,7 +232,7 @@ function selectedCommandFromUi(): RestCommand | null {
     return null
   }
 
-  const selectedId = getSelectedCommandId(activeUi.select)
+  const selectedId = getSelectedCommandId(activeUi)
   if (!selectedId) {
     return null
   }
@@ -136,25 +240,79 @@ function selectedCommandFromUi(): RestCommand | null {
   return store.findById(selectedId)
 }
 
+function toImportableCommands(commands: RestCommand[]): ImportableCommand[] {
+  return commands.map((command) => ({
+    url: command.url,
+    name: command.name,
+    tags: [...command.tags],
+  }))
+}
+
+function parseImportEntries(parsed: unknown): ImportEntry[] | null {
+  const entries = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as { commands?: unknown }).commands)
+      ? (parsed as { commands: unknown[] }).commands
+      : null
+
+  if (!entries) {
+    return null
+  }
+
+  const imported: ImportEntry[] = []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') {
+      continue
+    }
+
+    const record = entry as { url?: unknown; name?: unknown; tags?: unknown }
+    const url = typeof record.url === 'string' ? record.url.trim() : ''
+    if (!url) {
+      continue
+    }
+
+    const name = typeof record.name === 'string' ? record.name : ''
+    const tags = Array.isArray(record.tags)
+      ? record.tags.filter((tag): tag is string => typeof tag === 'string')
+      : typeof record.tags === 'string'
+        ? parseTagsInput(record.tags)
+        : []
+
+    imported.push({ url, name, tags })
+  }
+
+  return imported
+}
+
 function refreshUiData(preferredCommandId?: number): void {
   if (!activeUi) {
     return
   }
 
-  rebuildCommandSelect(activeUi.select, store.list(), preferredCommandId)
-  rebuildTagFilterSelect(activeUi.tagFilterSelect, store.availableTags(), bridgeState.activeTagFilter)
+  const availableTags = store.availableTags()
+  rebuildCommandTable(activeUi, store.list(), preferredCommandId)
+  rebuildTagFilterSelect(activeUi, availableTags, bridgeState.activeTagFilter)
+  rebuildTagsAutocomplete(activeUi, availableTags)
 
-  bridgeState.activeTagFilter = activeUi.tagFilterSelect.value
+  bridgeState.activeTagFilter = getActiveTagFilter(activeUi)
+  syncTagSelectionIndexFromFilter()
   const selected = selectedCommandFromUi()
   const filtered = getFilteredCommands()
 
   if (!selected || filtered.length === 0) {
     bridgeState.selectedIndex = 0
+    syncBrowserGlassSelectionByCommandId(currentGlassSelectedCommandId())
     return
   }
 
   const indexInFiltered = filtered.findIndex((command) => command.id === selected.id)
   bridgeState.selectedIndex = indexInFiltered >= 0 ? indexInFiltered : 0
+
+  const currentGlassSelected = getGlassSelectedCommandId(activeUi)
+  const selectedGlassId = currentGlassSelected && store.findById(currentGlassSelected)
+    ? currentGlassSelected
+    : currentGlassSelectedCommandId()
+  syncBrowserGlassSelectionByCommandId(selectedGlassId)
 }
 
 function getMockBridgeDisplay(): BridgeDisplay {
@@ -178,15 +336,20 @@ async function renderBridgePage(
   selectedIndex: number,
   statusMessage: string,
 ): Promise<void> {
+  const tagFilters = getTagFiltersForGlass()
+  const safeTagFilters = tagFilters.length > 0 ? tagFilters : [TAG_ALL]
+
   const safeCommands = commands.length > 0
     ? commands
     : [{ id: 0, url: 'N/A', name: 'No command configured', tags: [] } satisfies RestCommand]
+  const safeTagSelected = clampIndex(bridgeState.tagSelectedIndex, safeTagFilters.length)
+  const tagLabels = buildTagListLabels(safeTagFilters, safeTagSelected)
   const safeSelected = clampIndex(selectedIndex, safeCommands.length)
 
   const titleText = new TextContainerProperty({
     containerID: 1,
     containerName: 'restapi-title',
-    content: 'REST API (Click run, Dbl tag)',
+    content: 'REST API (Dbl tap switches Tags/Commands)',
     xPosition: 8,
     yPosition: 0,
     width: 560,
@@ -205,27 +368,43 @@ async function renderBridgePage(
     isEventCapture: 0,
   })
 
-  const listContainer = new ListContainerProperty({
-    containerID: 3,
+  const tagListContainer = new ListContainerProperty({
+    containerID: TAG_LIST_CONTAINER_ID,
+    containerName: 'restapi-tag-list',
+    itemContainer: new ListItemContainerProperty({
+      itemCount: safeTagFilters.length,
+      itemWidth: 180,
+      isItemSelectBorderEn: bridgeState.activeListFocus === 'tags' ? 1 : 0,
+      itemName: tagLabels,
+    }),
+    isEventCapture: bridgeState.activeListFocus === 'tags' ? 1 : 0,
+    xPosition: 4,
+    yPosition: 102,
+    width: 185,
+    height: 165,
+  })
+
+  const commandListContainer = new ListContainerProperty({
+    containerID: COMMAND_LIST_CONTAINER_ID,
     containerName: 'restapi-command-list',
     itemContainer: new ListItemContainerProperty({
       itemCount: safeCommands.length,
-      itemWidth: 566,
-      isItemSelectBorderEn: 1,
-      itemName: safeCommands.map((command) => toGlassLabel(command)),
+      itemWidth: 378,
+      isItemSelectBorderEn: bridgeState.activeListFocus === 'commands' ? 1 : 0,
+      itemName: safeCommands.map((command) => toGlassCommandLabel(command)),
     }),
-    isEventCapture: 1,
-    xPosition: 4,
+    isEventCapture: bridgeState.activeListFocus === 'commands' ? 1 : 0,
+    xPosition: 194,
     yPosition: 102,
-    width: 572,
-    height: 186,
+    width: 380,
+    height: 165,
   })
 
   const config = {
-    containerTotalNum: 3,
+    containerTotalNum: 4,
     textObject: [titleText, statusText],
-    listObject: [listContainer],
-    currentSelectedItem: safeSelected,
+    listObject: [tagListContainer, commandListContainer],
+    currentSelectedItem: bridgeState.activeListFocus === 'tags' ? safeTagSelected : safeSelected,
   }
 
   if (!bridgeState.startupRendered) {
@@ -258,17 +437,18 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
   }
 
   bridge.onEvenHubEvent(async (event) => {
-    const filteredCommands = getFilteredCommands()
-    if (filteredCommands.length === 0) {
-      return
-    }
-
-    const labels = filteredCommands.map((command) => toGlassLabel(command))
     const rawEventType = getRawEventType(event)
     let eventType = normalizeEventType(rawEventType, OsEventTypeList)
-
-    const incoming = parseIncomingSelection(event, labels)
-    const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < filteredCommands.length
+    const incomingContainerId = event.listEvent?.containerID
+    const focusFromContainer: GlassListFocus | null = incomingContainerId === TAG_LIST_CONTAINER_ID
+      ? 'tags'
+      : incomingContainerId === COMMAND_LIST_CONTAINER_ID
+        ? 'commands'
+        : null
+    const eventFocus = focusFromContainer ?? bridgeState.activeListFocus
+    if (focusFromContainer) {
+      bridgeState.activeListFocus = focusFromContainer
+    }
 
     if (eventType === undefined && event.listEvent) {
       // Keep parity with base_app behavior: ambiguous list events default to click.
@@ -276,15 +456,58 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
     }
 
     if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
-      bridgeState.activeTagFilter = store.nextTagFilter(bridgeState.activeTagFilter)
-      bridgeState.selectedIndex = 0
-      syncBrowserTagFilter(bridgeState.activeTagFilter)
+      bridgeState.activeListFocus = bridgeState.activeListFocus === 'commands' ? 'tags' : 'commands'
       bridgeState.statusMessage = buildFilterStatus()
-
       await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
-      appendEventLog(`REST API glass: switched filter to ${getTagFilterLabel(bridgeState.activeTagFilter)}`)
+      appendEventLog(`REST API glass: focus ${bridgeState.activeListFocus}`)
       return
     }
+
+    if (eventFocus === 'tags') {
+      const tagFilters = getTagFiltersForGlass()
+      const tagLabels = buildTagListLabels(tagFilters, clampIndex(bridgeState.tagSelectedIndex, tagFilters.length))
+      const incoming = parseIncomingSelection(event, tagLabels)
+      const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < tagFilters.length
+
+      if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT || eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
+        bridgeState.tagSelectedIndex = clampIndex(
+          hasIncomingIndex
+            ? incoming.index
+            : bridgeState.tagSelectedIndex + (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 1 : -1),
+          tagFilters.length,
+        )
+
+        bridgeState.statusMessage = `Tag selected: ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`
+        await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
+        appendEventLog(`REST API glass: tag highlight ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`)
+        return
+      }
+
+      if (eventType === OsEventTypeList.CLICK_EVENT || (eventType === undefined && event.listEvent)) {
+        const selectedIndex = hasIncomingIndex
+          ? clampIndex(incoming.index, tagFilters.length)
+          : 0
+        bridgeState.tagSelectedIndex = selectedIndex
+        bridgeState.activeTagFilter = tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL
+        syncTagSelectionIndexFromFilter()
+        bridgeState.selectedIndex = 0
+        syncBrowserTagFilter(bridgeState.activeTagFilter)
+        syncBrowserGlassSelectionByCommandId(currentGlassSelectedCommandId())
+        bridgeState.statusMessage = buildFilterStatus()
+        await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
+        appendEventLog(`REST API glass: selected filter ${getTagFilterLabel(bridgeState.activeTagFilter)}`)
+      }
+      return
+    }
+
+    const filteredCommands = getFilteredCommands()
+    if (filteredCommands.length === 0) {
+      return
+    }
+
+    const labels = filteredCommands.map((command) => toGlassCommandLabel(command))
+    const incoming = parseIncomingSelection(event, labels)
+    const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < filteredCommands.length
 
     if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
       bridgeState.selectedIndex = clampIndex(
@@ -295,6 +518,7 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
       const selected = filteredCommands[bridgeState.selectedIndex]
       if (selected) {
         syncBrowserSelectionByCommandId(selected.id)
+        syncBrowserGlassSelectionByCommandId(selected.id)
       }
 
       appendEventLog(`REST API glass: down -> ${displayName(filteredCommands[bridgeState.selectedIndex])}`)
@@ -310,6 +534,7 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
       const selected = filteredCommands[bridgeState.selectedIndex]
       if (selected) {
         syncBrowserSelectionByCommandId(selected.id)
+        syncBrowserGlassSelectionByCommandId(selected.id)
       }
 
       appendEventLog(`REST API glass: up -> ${displayName(filteredCommands[bridgeState.selectedIndex])}`)
@@ -328,6 +553,7 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
       }
 
       syncBrowserSelectionByCommandId(selectedCommand.id)
+      syncBrowserGlassSelectionByCommandId(selectedCommand.id)
       appendEventLog(`REST API glass: run ${displayName(selectedCommand)}`)
 
       const run = bridgeState.onSelectAndRun
@@ -447,8 +673,10 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
       return
     }
 
+    syncTagSelectionIndexFromFilter()
     const filtered = getFilteredCommands()
     bridgeState.selectedIndex = clampIndex(bridgeState.selectedIndex, filtered.length)
+    syncBrowserGlassSelectionByCommandId(currentGlassSelectedCommandId())
     bridgeState.statusMessage = buildFilterStatus()
     void bridgeDisplay.renderList(filtered, bridgeState.selectedIndex, bridgeState.statusMessage)
   }
@@ -457,9 +685,46 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
     if (!activeUi) {
       return
     }
+    const ui = activeUi
 
-    activeUi.select.onchange = () => {
-      const selected = selectedCommandFromUi()
+    ui.commandTableBody.onclick = (event) => {
+      const target = event.target as HTMLElement
+      const removeButton = target.closest<HTMLButtonElement>('button[data-remove-command-id]')
+      if (removeButton) {
+        const selectedId = Number.parseInt(removeButton.dataset.removeCommandId ?? '', 10)
+        if (!Number.isFinite(selectedId)) {
+          setStatus('No command selected')
+          return
+        }
+
+        const removed = store.removeById(selectedId)
+        refreshUiData()
+
+        if (!removed) {
+          setStatus('No command selected')
+          return
+        }
+
+        setStatus(`Removed command: ${displayName(removed)}`)
+        appendEventLog(`REST API: removed command ${removed.url}`)
+        persistCommands()
+        syncBridgeList()
+        return
+      }
+
+      const row = target.closest<HTMLTableRowElement>('tr[data-select-command-id]')
+      if (!row) {
+        return
+      }
+
+      const selectedId = Number.parseInt(row.dataset.selectCommandId ?? '', 10)
+      if (!Number.isFinite(selectedId)) {
+        return
+      }
+
+      syncBrowserSelectionByCommandId(selectedId)
+
+      const selected = store.findById(selectedId)
       if (!selected) {
         bridgeState.selectedIndex = 0
         syncBridgeList()
@@ -472,15 +737,22 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
       syncBridgeList()
     }
 
-    activeUi.tagFilterSelect.onchange = () => {
-      bridgeState.activeTagFilter = activeUi!.tagFilterSelect.value
+    ui.tagFilterGroup.onclick = (event) => {
+      const target = event.target as HTMLElement
+      const button = target.closest<HTMLButtonElement>('button[data-tag-filter]')
+      if (!button) {
+        return
+      }
+
+      bridgeState.activeTagFilter = button.dataset.tagFilter ?? TAG_ALL
+      syncTagFilter(ui, bridgeState.activeTagFilter)
       bridgeState.selectedIndex = 0
       appendEventLog(`REST API: tag filter set to ${getTagFilterLabel(bridgeState.activeTagFilter)}`)
       syncBridgeList()
     }
 
-    activeUi.addButton.onclick = () => {
-      const input = readCommandInput(activeUi!)
+    ui.addButton.onclick = () => {
+      const input = readCommandInput(ui)
       if (!input.url) {
         setStatus('Enter a URL before adding')
         return
@@ -489,7 +761,7 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
       const parsedTags = parseTagsInput(input.tagsInput)
       const { command, created } = store.upsert(input.url, input.name, parsedTags)
       refreshUiData(command.id)
-      clearCommandInput(activeUi!)
+      clearCommandInput(ui)
 
       if (created) {
         setStatus(`Added command: ${displayName(command)}`)
@@ -499,32 +771,78 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
         appendEventLog(`REST API: updated command ${command.url}`)
       }
 
+      persistCommands()
       syncBridgeList()
     }
 
-    activeUi.removeButton.onclick = () => {
-      const selectedId = getSelectedCommandId(activeUi!.select)
-      if (!selectedId) {
-        setStatus('No command selected')
+    ui.exportButton.onclick = () => {
+      const payload = toImportableCommands(store.list())
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const filename = `restapi-commands-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.append(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+
+      setStatus(`Exported ${payload.length} command(s) to file`)
+    }
+
+    ui.importButton.onclick = async () => {
+      const file = ui.importFileInput.files?.[0]
+      if (!file) {
+        setStatus('Choose a JSON file first')
         return
       }
 
-      const removed = store.removeById(selectedId)
-      refreshUiData()
-
-      if (!removed) {
-        setStatus('No command selected')
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(await file.text())
+      } catch {
+        setStatus('Import file JSON is invalid')
         return
       }
 
-      setStatus(`Removed command: ${displayName(removed)}`)
-      appendEventLog(`REST API: removed command ${removed.url}`)
+      const entries = parseImportEntries(parsed)
+      if (!entries) {
+        setStatus('Import format must be an array of commands')
+        return
+      }
+
+      let importedCount = 0
+      let lastCommandId: number | undefined
+
+      for (const entry of entries) {
+        const { command } = store.upsert(entry.url, entry.name, entry.tags)
+        lastCommandId = command.id
+        importedCount += 1
+      }
+
+      if (importedCount === 0) {
+        setStatus('No valid commands found in import file')
+        return
+      }
+
+      refreshUiData(lastCommandId)
+      setStatus(`Imported ${importedCount} command(s) from file`)
+      appendEventLog(`REST API: imported ${importedCount} command(s)`)
+      ui.importFileInput.value = ''
+      persistCommands()
       syncBridgeList()
     }
   }
 
   return {
     async connect() {
+      const persisted = loadPersistedCommands()
+      if (persisted && persisted.length > 0) {
+        store.replaceAll(persisted)
+      }
+
       activeUi = ensureUi()
       refreshUiData()
 
@@ -545,9 +863,10 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
 
       if (bridgeDisplay.mode === 'bridge') {
         syncBridgeList()
-        setStatus('REST API ready. Up/Down select, Click run, Double-click switches tag filter.')
+        setStatus('REST API ready. Up/Down select, Click run, Double-tap switches tags/commands list focus.')
         appendEventLog('REST API: controls initialized (bridge mode)')
       } else {
+        syncBrowserGlassSelectionByCommandId(null)
         setStatus('REST API controls ready. Bridge not found, browser mode active.')
         appendEventLog('REST API: controls initialized (mock mode)')
       }

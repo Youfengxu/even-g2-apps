@@ -7,7 +7,7 @@ export type RestCommand = {
   tags: string[]
 }
 
-type RestCommandSeed = {
+export type RestCommandSeed = {
   url: string
   name?: string
   tags?: string[]
@@ -47,19 +47,6 @@ export function displayName(command: RestCommand): string {
   return command.name || command.url
 }
 
-export function browserOptionLabel(command: RestCommand): string {
-  const tagSuffix = command.tags.length > 0 ? ` [${command.tags.join(', ')}]` : ''
-  return `${displayName(command)}${tagSuffix} -> ${command.url}`
-}
-
-export function toGlassLabel(command: RestCommand): string {
-  const base = displayName(command)
-  const tagSuffix = command.tags.length > 0 ? ` #${command.tags[0]}` : ''
-  const text = `${base}${tagSuffix}`
-  if (text.length <= 62) return text
-  return `${text.slice(0, 59)}...`
-}
-
 export function getTagFilterLabel(tagFilter: string): string {
   return tagFilter === TAG_ALL ? 'all tags' : `#${tagFilter}`
 }
@@ -75,6 +62,14 @@ export class RestCommandStore {
 
   list(): RestCommand[] {
     return this.commands
+  }
+
+  exportSeeds(): RestCommandSeed[] {
+    return this.commands.map((command) => ({
+      url: command.url,
+      name: command.name,
+      tags: [...command.tags],
+    }))
   }
 
   findById(id: number): RestCommand | null {
@@ -102,15 +97,6 @@ export class RestCommandStore {
     return [...set].sort((a, b) => a.localeCompare(b))
   }
 
-  nextTagFilter(current: string): string {
-    const cycle = [TAG_ALL, ...this.availableTags()]
-    const idx = cycle.indexOf(current)
-    if (idx < 0) {
-      return TAG_ALL
-    }
-    return cycle[(idx + 1) % cycle.length] ?? TAG_ALL
-  }
-
   upsert(url: string, name: string, tags: string[]): { command: RestCommand; created: boolean } {
     const trimmedUrl = url.trim()
     const existing = this.findByUrl(trimmedUrl)
@@ -134,6 +120,11 @@ export class RestCommandStore {
 
     const [removed] = this.commands.splice(index, 1)
     return removed ?? null
+  }
+
+  replaceAll(seed: RestCommandSeed[]): void {
+    this.nextId = 1
+    this.commands = seed.map((item) => this.create(item.url, item.name, item.tags ?? []))
   }
 
   private create(url: string, name?: string, tags: string[] = []): RestCommand {
