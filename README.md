@@ -49,7 +49,7 @@ Select app [1-15] (default 1): 1
 
 ![base\_app](./media/base_app.png)
 
-For general G2 development documentation, see the [G2 development notes](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md).
+For general G2 development documentation, see the [G2 development notes](https://github.com/nickustinov/even-g2-notes).
 
 ## Apps
 
@@ -427,7 +427,7 @@ flowchart TD
 * Community SDK: [even-better-sdk](https://www.npmjs.com/package/@jappyjan/even-better-sdk) by @JappyJan
 * UI components: [even-realities-ui](https://www.npmjs.com/package/@jappyjan/even-realities-ui) by @JappyJan
 * UIUX guidelines: [Figma](https://www.figma.com/design/X82y5uJvqMH95jgOfmV34j/Even-Realities---Software-Design-Guidelines--Public-?node-id=2922-80782&t=ZIxZJDitnBnZJOwb-1)
-* G2 development notes: [G2.md](https://github.com/nickustinov/even-g2-notes/blob/main/G2.md)
+* G2 development notes: [G2.md](https://github.com/nickustinov/even-g2-notes)
 
 ---
 
