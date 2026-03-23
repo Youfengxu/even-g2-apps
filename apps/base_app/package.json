@@ -1,5 +1,5 @@
 {
-  "name": "even-base-template-standalone",
+  "name": "app-base-template-g2",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "latest",
-    "@jappyjan/even-better-sdk": "^0.0.8",
-    "@jappyjan/even-realities-ui": "^0.0.8"
+    "@jappyjan/even-better-sdk": "^0.0.10",
+    "@jappyjan/even-realities-ui": "^0.0.10"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

@@ -1,6 +1,6 @@
 {
-  "name": "even-restapi-standalone",
-  "version": "0.2.0",
+  "name": "restapi-even-g2",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {

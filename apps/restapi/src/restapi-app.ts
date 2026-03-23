@@ -480,7 +480,7 @@ async function renderMainBridgePage(
   const titleText = new TextContainerProperty({
     containerID: 1,
     containerName: 'restapi-title',
-    content: 'REST API (Dbl tap switches Tags/Commands)',
+    content: 'REST API',
     xPosition: 8,
     yPosition: 0,
     width: 560,

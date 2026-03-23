@@ -1,6 +1,6 @@
 {
-  "name": "github.com.bxnxm.even-dev",
-  "version": "0.1.0",
+  "name": "timer-even-g2",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@evenrealities/even_hub_sdk": "latest",
-    "@jappyjan/even-realities-ui": "^0.0.8"
+    "@jappyjan/even-realities-ui": "^0.0.10"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
