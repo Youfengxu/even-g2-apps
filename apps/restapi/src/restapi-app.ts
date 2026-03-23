@@ -52,8 +52,14 @@ const PROXY_PATH = '/__restapi_proxy'
 const TAG_LIST_CONTAINER_ID = 3
 const COMMAND_LIST_CONTAINER_ID = 4
 const COMMANDS_STORAGE_KEY = 'even.restapi.commands.v1'
+const GLASS_RESPONSE_WRAP_WIDTH = 38
+const GLASS_MAIN_RESPONSE_LIMITS = {
+  maxCharacters: 180,
+  maxLines: 8,
+} as const
 
 type GlassListFocus = 'tags' | 'commands'
+type GlassView = 'main' | 'response'
 
 type BridgeDisplay = {
   mode: 'bridge' | 'mock'
@@ -72,6 +78,11 @@ type ImportEntry = {
   url: string
   name: string
   tags: string[]
+}
+
+type GlassResponseState = {
+  title: string
+  content: string
 }
 
 const store = new RestCommandStore()
@@ -104,9 +115,11 @@ const bridgeState: {
   selectedIndex: number
   tagSelectedIndex: number
   activeListFocus: GlassListFocus
+  activeView: GlassView
   statusMessage: string
   activeTagFilter: string
   onSelectAndRun: ((command: RestCommand) => Promise<void>) | null
+  response: GlassResponseState
 } = {
   bridge: null,
   startupRendered: false,
@@ -114,9 +127,14 @@ const bridgeState: {
   selectedIndex: 0,
   tagSelectedIndex: 0,
   activeListFocus: 'commands',
+  activeView: 'main',
   statusMessage: 'Select command and click',
   activeTagFilter: TAG_ALL,
   onSelectAndRun: null,
+  response: {
+    title: '',
+    content: '',
+  },
 }
 
 let bridgeDisplay: BridgeDisplay | null = null
@@ -169,6 +187,63 @@ function buildFilterStatus(): string {
   const filtered = getFilteredCommands()
   const focus = bridgeState.activeListFocus === 'tags' ? 'tags' : 'commands'
   return `Focus: ${focus} | Filter: ${getTagFilterLabel(bridgeState.activeTagFilter)} | ${filtered.length} cmd(s)`
+}
+
+function wrapGlassText(text: string, width: number): string[] {
+  const normalized = text.replace(/\r\n/g, '\n')
+  const rawLines = normalized.split('\n')
+  const wrapped: string[] = []
+
+  for (const rawLine of rawLines) {
+    if (!rawLine) {
+      wrapped.push('')
+      continue
+    }
+
+    let remaining = rawLine
+    while (remaining.length > width) {
+      const candidate = remaining.slice(0, width)
+      const splitAt = Math.max(candidate.lastIndexOf(' '), candidate.lastIndexOf('\t'))
+
+      if (splitAt > Math.floor(width * 0.4)) {
+        wrapped.push(candidate.slice(0, splitAt).trimEnd())
+        remaining = remaining.slice(splitAt + 1).trimStart()
+      } else {
+        wrapped.push(candidate)
+        remaining = remaining.slice(width)
+      }
+    }
+
+    wrapped.push(remaining)
+  }
+
+  return wrapped
+}
+
+function shouldShowResponsePage(text: string): boolean {
+  const normalized = text.trim()
+  const wrappedLineCount = normalized
+    ? wrapGlassText(normalized, GLASS_RESPONSE_WRAP_WIDTH).length
+    : 0
+
+  return normalized.length > GLASS_MAIN_RESPONSE_LIMITS.maxCharacters
+    || wrappedLineCount > GLASS_MAIN_RESPONSE_LIMITS.maxLines
+}
+
+function setGlassResponseView(title: string, text: string): void {
+  bridgeState.activeView = 'response'
+  bridgeState.response = {
+    title,
+    content: wrapGlassText(text, GLASS_RESPONSE_WRAP_WIDTH).join('\n'),
+  }
+}
+
+function clearGlassResponseView(): void {
+  bridgeState.activeView = 'main'
+  bridgeState.response = {
+    title: '',
+    content: '',
+  }
 }
 
 function parseIncomingSelection(
@@ -330,7 +405,66 @@ function getMockBridgeDisplay(): BridgeDisplay {
   }
 }
 
-async function renderBridgePage(
+async function rebuildBridgePage(
+  bridge: EvenAppBridge,
+  config: ConstructorParameters<typeof CreateStartUpPageContainer>[0],
+): Promise<void> {
+  if (!bridgeState.startupRendered) {
+    await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(config))
+    bridgeState.startupRendered = true
+    return
+  }
+
+  await bridge.rebuildPageContainer(new RebuildPageContainer(config))
+}
+
+async function renderResponseBridgePage(bridge: EvenAppBridge): Promise<void> {
+  const titleText = new TextContainerProperty({
+    containerID: 1,
+    containerName: 'restapi-response-title',
+    content: bridgeState.response.title,
+    xPosition: 8,
+    yPosition: 0,
+    width: 560,
+    height: 34,
+    isEventCapture: 0,
+  })
+
+  const hintText = new TextContainerProperty({
+    containerID: 2,
+    containerName: 'restapi-response-hint',
+    content: 'Scroll text | Dbl tap back',
+    xPosition: 8,
+    yPosition: 34,
+    width: 560,
+    height: 28,
+    isEventCapture: 0,
+  })
+
+  const bodyText = new TextContainerProperty({
+    containerID: 3,
+    containerName: 'restapi-response-body',
+    content: bridgeState.response.content,
+    xPosition: 8,
+    yPosition: 68,
+    width: 560,
+    height: 198,
+    isEventCapture: 1,
+  })
+
+  await rebuildBridgePage(bridge, {
+    containerTotalNum: 3,
+    textObject: [titleText, hintText, bodyText],
+  })
+}
+
+function getSafeGlassCommands(commands: RestCommand[]): RestCommand[] {
+  return commands.length > 0
+    ? commands
+    : [{ id: 0, url: 'N/A', name: 'No command configured', tags: [] } satisfies RestCommand]
+}
+
+async function renderMainBridgePage(
   bridge: EvenAppBridge,
   commands: RestCommand[],
   selectedIndex: number,
@@ -338,10 +472,7 @@ async function renderBridgePage(
 ): Promise<void> {
   const tagFilters = getTagFiltersForGlass()
   const safeTagFilters = tagFilters.length > 0 ? tagFilters : [TAG_ALL]
-
-  const safeCommands = commands.length > 0
-    ? commands
-    : [{ id: 0, url: 'N/A', name: 'No command configured', tags: [] } satisfies RestCommand]
+  const safeCommands = getSafeGlassCommands(commands)
   const safeTagSelected = clampIndex(bridgeState.tagSelectedIndex, safeTagFilters.length)
   const tagLabels = buildTagListLabels(safeTagFilters, safeTagSelected)
   const safeSelected = clampIndex(selectedIndex, safeCommands.length)
@@ -400,20 +531,26 @@ async function renderBridgePage(
     height: 165,
   })
 
-  const config = {
+  await rebuildBridgePage(bridge, {
     containerTotalNum: 4,
     textObject: [titleText, statusText],
     listObject: [tagListContainer, commandListContainer],
     currentSelectedItem: bridgeState.activeListFocus === 'tags' ? safeTagSelected : safeSelected,
-  }
+  })
+}
 
-  if (!bridgeState.startupRendered) {
-    await bridge.createStartUpPageContainer(new CreateStartUpPageContainer(config))
-    bridgeState.startupRendered = true
+async function renderBridgePage(
+  bridge: EvenAppBridge,
+  commands: RestCommand[],
+  selectedIndex: number,
+  statusMessage: string,
+): Promise<void> {
+  if (bridgeState.activeView === 'response') {
+    await renderResponseBridgePage(bridge)
     return
   }
 
-  await bridge.rebuildPageContainer(new RebuildPageContainer(config))
+  await renderMainBridgePage(bridge, commands, selectedIndex, statusMessage)
 }
 
 async function updateBridgeStatusText(bridge: EvenAppBridge, message: string): Promise<boolean> {
@@ -428,6 +565,124 @@ async function updateBridgeStatusText(bridge: EvenAppBridge, message: string): P
     return Boolean(updated)
   } catch {
     return false
+  }
+}
+
+async function showBridgeMainPage(bridge: EvenAppBridge): Promise<void> {
+  bridgeState.statusMessage = buildFilterStatus()
+  await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
+}
+
+async function handleResponseViewEvent(
+  bridge: EvenAppBridge,
+  eventType: OsEventTypeList | undefined,
+): Promise<boolean> {
+  if (bridgeState.activeView !== 'response') {
+    return false
+  }
+
+  if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+    clearGlassResponseView()
+    await showBridgeMainPage(bridge)
+    appendEventLog('REST API glass: back to main page')
+    return true
+  }
+
+  return true
+}
+
+async function handleTagListEvent(
+  bridge: EvenAppBridge,
+  event: EvenHubEvent,
+  eventType: OsEventTypeList | undefined,
+): Promise<void> {
+  const tagFilters = getTagFiltersForGlass()
+  const tagLabels = buildTagListLabels(tagFilters, clampIndex(bridgeState.tagSelectedIndex, tagFilters.length))
+  const incoming = parseIncomingSelection(event, tagLabels)
+  const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < tagFilters.length
+
+  if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT || eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
+    bridgeState.tagSelectedIndex = clampIndex(
+      hasIncomingIndex
+        ? incoming.index
+        : bridgeState.tagSelectedIndex + (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 1 : -1),
+      tagFilters.length,
+    )
+
+    bridgeState.statusMessage = `Tag selected: ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`
+    await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
+    appendEventLog(`REST API glass: tag highlight ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`)
+    return
+  }
+
+  if (eventType === OsEventTypeList.CLICK_EVENT || (eventType === undefined && event.listEvent)) {
+    const selectedIndex = hasIncomingIndex
+      ? clampIndex(incoming.index, tagFilters.length)
+      : 0
+
+    bridgeState.tagSelectedIndex = selectedIndex
+    bridgeState.activeTagFilter = tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL
+    syncTagSelectionIndexFromFilter()
+    bridgeState.selectedIndex = 0
+    syncBrowserTagFilter(bridgeState.activeTagFilter)
+    syncBrowserGlassSelectionByCommandId(currentGlassSelectedCommandId())
+    await showBridgeMainPage(bridge)
+    appendEventLog(`REST API glass: selected filter ${getTagFilterLabel(bridgeState.activeTagFilter)}`)
+  }
+}
+
+async function handleCommandListEvent(
+  bridge: EvenAppBridge,
+  event: EvenHubEvent,
+  eventType: OsEventTypeList | undefined,
+): Promise<void> {
+  const filteredCommands = getFilteredCommands()
+  if (filteredCommands.length === 0) {
+    return
+  }
+
+  const labels = filteredCommands.map((command) => toGlassCommandLabel(command))
+  const incoming = parseIncomingSelection(event, labels)
+  const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < filteredCommands.length
+
+  if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT || eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
+    bridgeState.selectedIndex = clampIndex(
+      hasIncomingIndex
+        ? incoming.index
+        : bridgeState.selectedIndex + (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 1 : -1),
+      filteredCommands.length,
+    )
+
+    const selected = filteredCommands[bridgeState.selectedIndex]
+    if (selected) {
+      syncBrowserSelectionByCommandId(selected.id)
+      syncBrowserGlassSelectionByCommandId(selected.id)
+      appendEventLog(
+        `REST API glass: ${eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 'down' : 'up'} -> ${displayName(selected)}`,
+      )
+    }
+    return
+  }
+
+  if (eventType === OsEventTypeList.CLICK_EVENT || (eventType === undefined && event.listEvent)) {
+    const selectedIndex = hasIncomingIndex
+      ? clampIndex(incoming.index, filteredCommands.length)
+      : 0
+
+    bridgeState.selectedIndex = selectedIndex
+    const selectedCommand = filteredCommands[selectedIndex]
+    if (!selectedCommand) {
+      return
+    }
+
+    syncBrowserSelectionByCommandId(selectedCommand.id)
+    syncBrowserGlassSelectionByCommandId(selectedCommand.id)
+    appendEventLog(`REST API glass: run ${displayName(selectedCommand)}`)
+
+    const run = bridgeState.onSelectAndRun
+    if (run) {
+      await run(selectedCommand)
+    }
   }
 }
 
@@ -456,111 +711,28 @@ function registerBridgeEvents(bridge: EvenAppBridge): void {
     }
 
     if (eventType === OsEventTypeList.DOUBLE_CLICK_EVENT) {
+      const handledByResponseView = await handleResponseViewEvent(bridge, eventType)
+      if (handledByResponseView) {
+        return
+      }
+
       bridgeState.activeListFocus = bridgeState.activeListFocus === 'commands' ? 'tags' : 'commands'
-      bridgeState.statusMessage = buildFilterStatus()
-      await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
+      await showBridgeMainPage(bridge)
       appendEventLog(`REST API glass: focus ${bridgeState.activeListFocus}`)
       return
     }
 
+    const handledByResponseView = await handleResponseViewEvent(bridge, eventType)
+    if (handledByResponseView) {
+      return
+    }
+
     if (eventFocus === 'tags') {
-      const tagFilters = getTagFiltersForGlass()
-      const tagLabels = buildTagListLabels(tagFilters, clampIndex(bridgeState.tagSelectedIndex, tagFilters.length))
-      const incoming = parseIncomingSelection(event, tagLabels)
-      const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < tagFilters.length
-
-      if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT || eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
-        bridgeState.tagSelectedIndex = clampIndex(
-          hasIncomingIndex
-            ? incoming.index
-            : bridgeState.tagSelectedIndex + (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT ? 1 : -1),
-          tagFilters.length,
-        )
-
-        bridgeState.statusMessage = `Tag selected: ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`
-        await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
-        appendEventLog(`REST API glass: tag highlight ${toGlassTagLabel(tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL)}`)
-        return
-      }
-
-      if (eventType === OsEventTypeList.CLICK_EVENT || (eventType === undefined && event.listEvent)) {
-        const selectedIndex = hasIncomingIndex
-          ? clampIndex(incoming.index, tagFilters.length)
-          : 0
-        bridgeState.tagSelectedIndex = selectedIndex
-        bridgeState.activeTagFilter = tagFilters[bridgeState.tagSelectedIndex] ?? TAG_ALL
-        syncTagSelectionIndexFromFilter()
-        bridgeState.selectedIndex = 0
-        syncBrowserTagFilter(bridgeState.activeTagFilter)
-        syncBrowserGlassSelectionByCommandId(currentGlassSelectedCommandId())
-        bridgeState.statusMessage = buildFilterStatus()
-        await renderBridgePage(bridge, getFilteredCommands(), bridgeState.selectedIndex, bridgeState.statusMessage)
-        appendEventLog(`REST API glass: selected filter ${getTagFilterLabel(bridgeState.activeTagFilter)}`)
-      }
+      await handleTagListEvent(bridge, event, eventType)
       return
     }
 
-    const filteredCommands = getFilteredCommands()
-    if (filteredCommands.length === 0) {
-      return
-    }
-
-    const labels = filteredCommands.map((command) => toGlassCommandLabel(command))
-    const incoming = parseIncomingSelection(event, labels)
-    const hasIncomingIndex = incoming.hasExplicitIndex && incoming.index < filteredCommands.length
-
-    if (eventType === OsEventTypeList.SCROLL_BOTTOM_EVENT) {
-      bridgeState.selectedIndex = clampIndex(
-        hasIncomingIndex ? incoming.index : bridgeState.selectedIndex + 1,
-        filteredCommands.length,
-      )
-
-      const selected = filteredCommands[bridgeState.selectedIndex]
-      if (selected) {
-        syncBrowserSelectionByCommandId(selected.id)
-        syncBrowserGlassSelectionByCommandId(selected.id)
-      }
-
-      appendEventLog(`REST API glass: down -> ${displayName(filteredCommands[bridgeState.selectedIndex])}`)
-      return
-    }
-
-    if (eventType === OsEventTypeList.SCROLL_TOP_EVENT) {
-      bridgeState.selectedIndex = clampIndex(
-        hasIncomingIndex ? incoming.index : bridgeState.selectedIndex - 1,
-        filteredCommands.length,
-      )
-
-      const selected = filteredCommands[bridgeState.selectedIndex]
-      if (selected) {
-        syncBrowserSelectionByCommandId(selected.id)
-        syncBrowserGlassSelectionByCommandId(selected.id)
-      }
-
-      appendEventLog(`REST API glass: up -> ${displayName(filteredCommands[bridgeState.selectedIndex])}`)
-      return
-    }
-
-    if (eventType === OsEventTypeList.CLICK_EVENT || (eventType === undefined && event.listEvent)) {
-      const selectedIndex = hasIncomingIndex
-        ? clampIndex(incoming.index, filteredCommands.length)
-        : 0
-
-      bridgeState.selectedIndex = selectedIndex
-      const selectedCommand = filteredCommands[selectedIndex]
-      if (!selectedCommand) {
-        return
-      }
-
-      syncBrowserSelectionByCommandId(selectedCommand.id)
-      syncBrowserGlassSelectionByCommandId(selectedCommand.id)
-      appendEventLog(`REST API glass: run ${displayName(selectedCommand)}`)
-
-      const run = bridgeState.onSelectAndRun
-      if (run) {
-        await run(selectedCommand)
-      }
-    }
+    await handleCommandListEvent(bridge, event, eventType)
   })
 
   bridgeState.eventLoopRegistered = true
@@ -575,6 +747,7 @@ function getBridgeDisplay(): BridgeDisplay {
     mode: 'bridge',
     async show(message: string) {
       bridgeState.statusMessage = message
+      clearGlassResponseView()
       const bridge = bridgeState.bridge!
       const updated = await updateBridgeStatusText(bridge, bridgeState.statusMessage)
       if (updated) {
@@ -650,9 +823,14 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
       appendEventLog(`REST API response preview: ${preview.replace(/\n/g, ' ')}`)
 
       if (bridgeDisplay) {
-        const compactPreview = preview.replace(/\s+/g, ' ').slice(0, 96)
-        const bridgeMessage = `${displayName(command)} ${statusLine}\n${compactPreview}`
-        await bridgeDisplay.show(bridgeMessage)
+        const bridgeBody = `${statusLine}\n${body}`.trim()
+        if (shouldShowResponsePage(bridgeBody)) {
+          setGlassResponseView(displayName(command), bridgeBody)
+          await bridgeDisplay.renderList(getFilteredCommands(), bridgeState.selectedIndex, statusLine)
+        } else {
+          const compactPreview = preview.replace(/\s+/g, ' ').slice(0, 96)
+          await bridgeDisplay.show(compactPreview || body.slice(0, 96))
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -661,7 +839,13 @@ export function createRestApiActions(setStatus: SetStatus): AppActions {
       appendEventLog(`REST API: request failed (${message})`)
 
       if (bridgeDisplay) {
-        await bridgeDisplay.show(`GET failed: ${message.slice(0, 80)}`)
+        const bridgeBody = `GET failed\n${message}`.trim()
+        if (shouldShowResponsePage(bridgeBody)) {
+          setGlassResponseView(displayName(command), bridgeBody)
+          await bridgeDisplay.renderList(getFilteredCommands(), bridgeState.selectedIndex, 'GET failed')
+        } else {
+          await bridgeDisplay.show(message.slice(0, 96))
+        }
       }
     } finally {
       isFetching = false
